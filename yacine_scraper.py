@@ -22,8 +22,8 @@ def decrypt_yacine(encrypted_data, header_t):
 # إنشاء جلسة عمل مشتركة (Session) للحفاظ على الكوكيز وتفادي الحظر
 def create_session():
     session = requests.Session()
-    # المحاولة التلقائية عند حدوث ضغط على السيرفر
-    retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
+    # المحاولة التلقائية عند حدوث ضغط على السيرفر (تمت زيادة المحاولات إلى 5 لمقاومة الحظر)
+    retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retries)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
@@ -32,7 +32,8 @@ def create_session():
 # دالة للاتصال بالسيرفر وفك تشفير البيانات تلقائياً
 def fetch_and_decrypt(session, url, headers):
     try:
-        response = session.get(url, headers=headers, timeout=10)
+        response = session.get(url, headers=headers, timeout=15)
+        print(f"📡 طلب: {url} -> حالة الرد: {response.status_code}")
         if response.status_code == 200:
             t_value = response.headers.get('T') or response.headers.get('t')
             if t_value:
@@ -40,7 +41,7 @@ def fetch_and_decrypt(session, url, headers):
                 if decrypted_json_str:
                     return json.loads(decrypted_json_str)
             else:
-                print(f"⚠️ تحذير: لم يتم العثور على مفتاح T في الرابط: {url}")
+                print(f"⚠️ تحذير: لم يتم العثور على مفتاح T في الرد من {url}")
         else:
             print(f"❌ فشل الاتصال بالرابط: {url} - كود الحالة: {response.status_code}")
     except Exception as e:
@@ -70,7 +71,7 @@ app_headers = {
 
 session = create_session()
 
-# الباقات الرياضية المستهدفة التي سنقوم بسحبها مباشرة دون الحاجة لخطوة الاستعلام عن الأقسام المتعبة
+# الباقات الرياضية المستهدفة التي سنقوم بسحبها مباشرة
 targets = {
     "beIN SPORTS": "https://def.yacinelive.com/api/categories/90/channels",
     "beIN MAX": "https://def.yacinelive.com/api/categories/89/channels"
@@ -87,12 +88,12 @@ for cat_name, category_url in targets.items():
         channels_list = channels_data['data']
         print(f"   📺 عثرنا على ({len(channels_list)}) قنوات في هذه الباقة.")
         
-        # جلب روابط القنوات مباشرة
+        # جلب روابط القنوات
         for index, channel in enumerate(channels_list):
             channel_name = channel.get('name')
             channel_id = channel.get('id')
             
-            print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج: {channel_name}...")
+            print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج قنوات وجودات: {channel_name}...")
             
             channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
             detail_data = fetch_and_decrypt(session, channel_detail_url, app_headers)
@@ -100,24 +101,30 @@ for cat_name, category_url in targets.items():
             if detail_data and 'data' in detail_data:
                 streams = detail_data['data']
                 if streams:
-                    stream = streams[0]
-                    raw_url = stream.get('url')
-                    final_url = get_final_url(raw_url)
-                    
-                    # إضافة القناة للملف
-                    m3u_content += f'#EXTINF:-1 tvg-logo="" group-title="{cat_name}", {channel_name}\n'
-                    m3u_content += f'#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/\n'
-                    m3u_content += f'#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\n'
-                    m3u_content += f'{final_url}\n'
-                    print(f"      ✔️ تم جلب الرابط بنجاح.")
-            
-            # تأخير بسيط (0.5 ثانية) لمنع الحظر
-            time.sleep(0.5)
-    else:
-        print(f"❌ فشل جلب قنوات الباقة: {cat_name}")
+                    # المرور على جميع جودات البث المتوفرة لهذه القناة وإضافتها بالكامل
+                    for stream in streams:
+                        stream_quality = stream.get('name', 'SD') # اسم الجودة (مثال: HD, SD, Low)
+                        raw_url = stream.get('url')
+                        final_url = get_final_url(raw_url)
+                        
+                        # دمج اسم القناة مع اسم الجودة لتبدو منسقة (مثل: beIN SPORTS 1 - HD)
+                        display_name = f"{channel_name} - {stream_quality}"
+                        
+                        m3u_content += f'#EXTINF:-1 tvg-logo="" group-title="{cat_name}", {display_name}\n'
+                        m3u_content += f'#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/\n'
+                        m3u_content += f'#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\n'
+                        m3u_content += f'{final_url}\n'
+                        print(f"      ✔️ جودة {stream_quality}: نجاح.")
+                    else:
+                        print(f"      ⚠️ لا توجد جودات بث متوفرة لهذه القناة.")
+                
+                # تأخير بسيط (0.5 ثانية) لمنع الحظر
+                time.sleep(0.5)
+        else:
+            print(f"❌ فشل جلب قنوات الباقة: {cat_name}")
 
 # حفظ ملف M3U المشترك
 with open("playlist.m3u", "w", encoding="utf-8") as f:
     f.write(m3u_content)
 
-print("\n🎉 مبروك! تم جلب الباقتين معاً بنجاح وبأمان تام في ملف واحد!")
+print("\n🎉 مبروك! تم جلب الباقتين بجميع الجودات المتوفرة بنجاح في ملف واحد!")
