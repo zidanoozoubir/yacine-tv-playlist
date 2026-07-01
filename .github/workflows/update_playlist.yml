@@ -24,13 +24,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install requests
 
-    - name: Run Scraper
+    - name: Run Scraper and Update Gist
+      env:
+        GIST_ID: ${{ secrets.GIST_ID }}
+        GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
       run: python yacine_scraper.py
-
-    - name: Commit and Push changes
-      run: |
-        git config --global user.name "GitHub Action"
-        git config --global user.email "action@github.com"
-        git add playlist.m3u
-        git commit -m "Update playlist.m3u [skip ci]" || echo "No changes to commit"
-        git push
