@@ -21,7 +21,7 @@ def decrypt_yacine(encrypted_data, header_t):
             decrypted_bytes.append(encrypted_bytes[i] ^ full_key[i % len(full_key)])
         return decrypted_bytes.decode('utf-8')
     except Exception as e:
-        print(f"خطأ في فك التشفير: {e}")
+        print(f"Error decrypting Yacine: {e}")
         return None
 
 # إنشاء جلسة عمل مشتركة (Session) للحفاظ على الكوكيز وتفادي الحظر
@@ -33,26 +33,21 @@ def create_session():
     session.mount('https://', adapter)
     return session
 
-# دالة للاتصال بالسيرفر وفك تشفير البيانات تلقائياً
-def fetch_and_decrypt(session, url, headers):
+# دالة للاتصال بسيرفر ياسين وفك التشفير تلقائياً
+def fetch_and_decrypt_yacine(session, url, headers):
     try:
         response = session.get(url, headers=headers, timeout=15)
-        print(f"📡 طلب: {url} -> حالة الرد: {response.status_code}")
         if response.status_code == 200:
             t_value = response.headers.get('T') or response.headers.get('t')
             if t_value:
                 decrypted_json_str = decrypt_yacine(response.text, t_value)
                 if decrypted_json_str:
                     return json.loads(decrypted_json_str)
-            else:
-                print(f"⚠️ تحذير: لم يتم العثور على مفتاح T في الرد من {url}")
-        else:
-            print(f"❌ فشل الاتصال بالرابط: {url} - كود الحالة: {response.status_code}")
-    except Exception as e:
-        print(f"❌ خطأ أثناء جلب الرابط {url}: {e}")
+    except Exception:
+        pass
     return None
 
-# دالة جلب رابط التوجيه (Redirect)
+# دالة جلب رابط التوجيه (Redirect) لياسين تيفي
 def get_final_url(raw_url):
     browser_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
@@ -65,13 +60,17 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# دالة لتصفية واستخراج القنوات الثابتة فقط من المحتوى الحالي
+# دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
 def extract_static_channels(m3u_content):
     lines = m3u_content.splitlines()
     static_lines = []
     current_channel_block = []
     
-    yacine_keywords = ["def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV"]
+    # الكلمات الدلالية الخاصة بياسين تيفي والباشا تيفي لتصفيتها وحذفها أثناء التحديث
+    exclude_keywords = [
+        "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
+        "albashatv.site", "playcasta.online", "AL BASHA TV"
+    ]
 
     for line in lines:
         line_stripped = line.strip()
@@ -84,7 +83,7 @@ def extract_static_channels(m3u_content):
         if line_stripped.startswith("#EXTINF"):
             if current_channel_block:
                 block_str = "".join(current_channel_block)
-                if not any(kw in block_str for kw in yacine_keywords):
+                if not any(kw in block_str for kw in exclude_keywords):
                     static_lines.extend(current_channel_block)
                     static_lines.append("")
             current_channel_block = [line_stripped]
@@ -92,18 +91,18 @@ def extract_static_channels(m3u_content):
             if current_channel_block:
                 current_channel_block.append(line_stripped)
             else:
-                if not any(kw in line_stripped for kw in yacine_keywords):
+                if not any(kw in line_stripped for kw in exclude_keywords):
                     static_lines.append(line_stripped)
                     
     if current_channel_block:
         block_str = "".join(current_channel_block)
-        if not any(kw in block_str for kw in yacine_keywords):
+        if not any(kw in block_str for kw in exclude_keywords):
             static_lines.extend(current_channel_block)
             
     return "\n".join(static_lines).strip()
 
-# 1. جلب المحتوى الحالي من الـ Gist
-print("📂 جاري جلب محتوى الـ Gist الحالي لتصنيفه...")
+# 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
+print("📂 جاري جلب محتوى الـ Gist الحالي لتصنيفه وتأمينه...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
 gist_headers = {
     "Authorization": f"token {GITHUB_TOKEN}",
@@ -121,7 +120,7 @@ try:
         current_content = gist_data['files'][filename]['content']
         
         static_clean = extract_static_channels(current_content)
-        print("✔️ تم عزل واستخراج قنواتك اليدوية بنجاح.")
+        print("✔️ تم تحديد وحفظ القنوات اليدوية بنجاح.")
     else:
         print(f"❌ فشل جلب الـ Gist الحالي. كود الحالة: {gist_response.status_code}")
         exit(1)
@@ -129,41 +128,81 @@ except Exception as e:
     print(f"❌ خطأ أثناء الاتصال بـ Gist API: {e}")
     exit(1)
 
-yacine_content = ""
-separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
-
-# 2. جلب وتشفير قنوات ياسين تيفي
 session = create_session()
+final_m3u_content = ""
+
+# 2. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV) المحددة
+print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
+basha_separator = "# ==================== مجموعة قنوات AL BASHA TV ===================="
+basha_api_url = "https://albashatv.site/api.php"
+basha_headers = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    "Connection": "Keep-Alive",
+    "User-Agent": "okhttp/3.9.1"
+}
+basha_payload = "method=o6&event=view"
+
+# تحديد الكلمات المفتاحية المطلوبة فقط
+basha_targets = ["bein max", "bein sport", "osn", "netflix", "bein media", "hbo", "amazon prime", "amazon"]
+
+basha_content = ""
+try:
+    basha_response = session.post(basha_api_url, headers=basha_headers, data=basha_payload, timeout=15)
+    if basha_response.status_code == 200:
+        basha_channels = basha_response.json()
+        print(f"✅ تم الاتصال بسيرفر الباشا بنجاح. إجمالي القنوات المتوفرة: ({len(basha_channels)}) قناة.")
+        
+        matched_count = 0
+        for channel in basha_channels:
+            channel_name = channel.get('name', '')
+            channel_url = channel.get('url', '')
+            
+            # فحص اسم القناة بمقارنة الحروف الصغيرة
+            channel_name_lower = channel_name.lower()
+            if any(target in channel_name_lower for target in basha_targets):
+                basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
+                basha_content += f'{channel_url}\n'
+                matched_count += 1
+                
+        print(f"🎯 تم استخراج ({matched_count}) قناة مطابقة للشروط الفنية من الباشا تيفي.")
+    else:
+        print(f"❌ فشل جلب قنوات الباقة: AL BASHA TV")
+except Exception as e:
+    print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
+
+
+# 3. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV)
+print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
+yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 targets = {
     "https://def.yacinelive.com/api/categories/90/channels": "FHD",
     "https://def.yacinelive.com/api/categories/89/channels": "HD"
 }
-app_headers = {
+yacine_headers = {
     "Accept": "application/json",
     "Accept-Encoding": "gzip",
     "Connection": "Keep-Alive",
     "User-Agent": "okhttp/4.12.0"
 }
 
-# قيم الحماية المطلوبة لتشغيل بث ياسين
+# قيم الحماية المطلوبة لتشغيل بث ياسين على أجهزة الاستقبال والبرامج الأخرى
 ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 referer_value = "http://re.ycn-redirect.com/"
 
+yacine_content = ""
 for category_url, quality in targets.items():
-    print(f"🔄 جاري سحب قنوات ياسين بجودة {quality}...")
-    channels_data = fetch_and_decrypt(session, category_url, app_headers)
+    print(f"🔄 جاري سحب باقة ياسين بجودة {quality}...")
+    channels_data = fetch_and_decrypt_yacine(session, category_url, yacine_headers)
     
     if channels_data and 'data' in channels_data:
         channels_list = channels_data['data']
-        print(f"   📺 عثرنا على ({len(channels_list)}) قنوات.")
-        
         for index, channel in enumerate(channels_list):
             channel_name = channel.get('name')
             channel_id = channel.get('id')
             
             print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج: {channel_name}...")
             channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
-            detail_data = fetch_and_decrypt(session, channel_detail_url, app_headers)
+            detail_data = fetch_and_decrypt_yacine(session, channel_detail_url, yacine_headers)
             
             if detail_data and 'data' in detail_data:
                 streams = detail_data['data']
@@ -172,19 +211,19 @@ for category_url, quality in targets.items():
                     raw_url = stream.get('url')
                     final_url = get_final_url(raw_url)
                     
-                    # دمج معلومات الحماية بالرابط لضمان معيار السطرين المتوافق مع الريسيفر
+                    # دمج الهيدرز للتوافق مع أجهزة الاستقبال بصيغة سطرين لكل قناة
                     final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}"
-                    
                     display_name = f"{channel_name} {quality}"
+                    
                     yacine_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
                     yacine_content += f'{final_url_with_headers}\n'
                     print(f"      ✔️ نجاح.")
             time.sleep(0.5)
 
-# دمج الملف بالترتيب الجديد
-final_m3u_content = f"#EXTM3U\n\n{separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
+# دمج المحتوى مع الحفاظ على الترتيب وحماية قنواتك اليدوية بالأسفل
+final_m3u_content = f"#EXTM3U\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
 
-# 3. تحديث الـ Gist
+# 4. تحديث الـ Gist الخاص بك
 print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
 update_data = {
     "files": {
@@ -197,6 +236,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! تم تطبيق صيغة السطرين المتوافقة مع أجهزة الاستقبال.")
+    print("🎉 تم التحديث بنجاح! تم استخراج القنوات المستهدفة من الباشا وياسين مع حماية قنواتك.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
