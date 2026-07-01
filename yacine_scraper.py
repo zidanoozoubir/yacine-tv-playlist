@@ -65,13 +65,58 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# 1. جلب المحتوى الحالي من الـ Gist السري الخاص بك لتنظيفه والحفاظ على قنواتك الثابتة
+# دالة لتصفية واستخراج القنوات الثابتة فقط من المحتوى الحالي
+def extract_static_channels(m3u_content):
+    lines = m3u_content.splitlines()
+    static_lines = []
+    current_channel_block = []
+    
+    # الكلمات الدلالية التي تشير إلى أن القناة تابعة لياسين تيفي لكي نقوم بحذفها
+    yacine_keywords = ["def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV"]
+
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped:
+            continue
+        
+        # تجنب تكرار وسم البداية الرئيسي أو الفواصل التجميلية
+        if line_stripped.startswith("#EXTM3U") or "=====" in line_stripped:
+            continue
+            
+        if line_stripped.startswith("#EXTINF"):
+            # إذا كان هناك بلوك مستخرج مسبقاً، نقوم بفحصه قبل البدء ببلوك جديد
+            if current_channel_block:
+                block_str = "".join(current_channel_block)
+                if not any(kw in block_str for kw in yacine_keywords):
+                    static_lines.extend(current_channel_block)
+                    static_lines.append("") # سطر فارغ للفصل
+            current_channel_block = [line_stripped]
+        elif line_stripped.startswith("#") or line_stripped.startswith("http") or line_stripped.startswith("rtmp"):
+            if current_channel_block:
+                current_channel_block.append(line_stripped)
+            else:
+                # أسطر عادية خارج البلوك (مثل روابط مباشرة أو تعليقات عامة)
+                if not any(kw in line_stripped for kw in yacine_keywords):
+                    static_lines.append(line_stripped)
+                    
+    # فحص البلوك الأخير في الملف
+    if current_channel_block:
+        block_str = "".join(current_channel_block)
+        if not any(kw in block_str for kw in yacine_keywords):
+            static_lines.extend(current_channel_block)
+            
+    return "\n".join(static_lines).strip()
+
+# 1. جلب المحتوى الحالي من الـ Gist لتنظيفه والحفاظ على قنواتك اليدوية
 print("📂 جاري جلب محتوى الـ Gist الحالي لتصنيفه...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
 gist_headers = {
     "Authorization": f"token {GITHUB_TOKEN}",
     "Accept": "application/vnd.github+json"
 }
+
+static_clean = ""
+filename = "kz.m3u" # اسم الملف الافتراضي احتياطياً
 
 try:
     gist_response = requests.get(gist_api_url, headers=gist_headers, timeout=15)
@@ -80,20 +125,9 @@ try:
         filename = list(gist_data['files'].keys())[0]
         current_content = gist_data['files'][filename]['content']
         
-        # تقسيم المحتوى بذكاء لعزل قنوات ياسين السابقة والحفاظ على قنواتك الثابتة فقط
-        separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
-        if separator in current_content:
-            parts = current_content.split(separator)
-            static_part = ""
-            for part in parts:
-                # تصفية واستخراج الجزء الذي لا يحتوي على روابط ياسين تيفي
-                if "def.yacinelive.com" not in part and "metava.online" not in part and "re.ycn-redirect.com" not in part:
-                    static_part += part
-            
-            # تنظيف قنواتك الثابتة وحذف وسم EXTM3U المكرر لتجهيز الدمج
-            static_clean = static_part.replace("#EXTM3U", "").strip()
-        else:
-            static_clean = current_content.replace("#EXTM3U", "").strip()
+        # استخراج قنواتك اليدوية فقط عبر دالة الفلترة الذكية
+        static_clean = extract_static_channels(current_content)
+        print("✔️ تم عزل واستخراج قنواتك اليدوية بنجاح.")
     else:
         print(f"❌ فشل جلب الـ Gist الحالي. كود الحالة: {gist_response.status_code}")
         exit(1)
@@ -103,6 +137,7 @@ except Exception as e:
 
 # تجهيز باقة ياسين تيفي لوضعها في الأعلى
 yacine_content = ""
+separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
 # 2. جلب وتشفير قنوات ياسين تيفي
 session = create_session()
@@ -148,11 +183,11 @@ for category_url, quality in targets.items():
                     print(f"      ✔️ نجاح.")
             time.sleep(0.5)
 
-# دمج الملف بالترتيب الجديد: وسم الـ M3U ثم قنوات ياسين تيفي ثم قنواتك الثابتة بالأسفل!
-final_m3u_content = f"#EXTM3U\n\n{separator}\n{yacine_content}\n\n{static_clean}"
+# دمج الملف بالترتيب الجديد: وسم الـ M3U ثم قنوات ياسين تيفي ثم قنواتك الثابتة بالأسفل
+final_m3u_content = f"#EXTM3U\n\n{separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
 
-# 3. تحديث الـ Gist السري الخاص بك مباشرة بالملف الجديد المرتّب
-print("\n🔐 جاري تحديث الـ Gist السري الخاص بك...")
+# 3. تحديث الـ Gist بالملف الجديد المرتّب
+print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
 update_data = {
     "files": {
         filename: {
@@ -164,6 +199,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! باقة ياسين تيفي الآن في المقدمة بالأعلى وقنواتك بالأسفل.")
+    print("🎉 تم التحديث بنجاح! باقة ياسين تيفي الآن في المقدمة بالأعلى وقنواتك اليدوية بالأسفل.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
