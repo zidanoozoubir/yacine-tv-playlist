@@ -3,6 +3,7 @@ import requests
 import json
 import time
 import os
+import urllib.parse
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
@@ -60,13 +61,33 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
+# دالة ذكية لتنظيف وتقشير روابط الباشا لتصبح متوافقة مع أجهزة الاستقبال
+def clean_and_extract_url(raw_url):
+    if not raw_url:
+        return raw_url
+        
+    # 1. إذا كان الرابط يمر عبر وسيط الباشا تيفي نقوم باستخراج الرابط الداخلي
+    if "?url=" in raw_url:
+        parsed_url = urllib.parse.urlparse(raw_url)
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+        if 'url' in query_params:
+            raw_url = query_params['url'][0]
+            
+    # 2. تنظيف وتصحيح الشرطات المائلة المتكررة (مثل /// أو //)
+    if "://" in raw_url:
+        scheme, rest = raw_url.split("://", 1)
+        parts = [p for p in rest.split("/") if p]
+        normalized_rest = "/".join(parts)
+        return f"{scheme}://{normalized_rest}"
+        
+    return raw_url
+
 # دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
 def extract_static_channels(m3u_content):
     lines = m3u_content.splitlines()
     static_lines = []
     current_channel_block = []
     
-    # الكلمات الدلالية الخاصة بياسين تيفي والباشا تيفي لتصفيتها وحذفها أثناء التحديث
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
         "albashatv.site", "playcasta.online", "AL BASHA TV"
@@ -102,7 +123,7 @@ def extract_static_channels(m3u_content):
     return "\n".join(static_lines).strip()
 
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
-print("📂 جاري جلب محتوى الـ Gist الحالي لتصنيفه وتأمينه...")
+print("📂 جاري جلب محتوى الـ Gist الحالي...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
 gist_headers = {
     "Authorization": f"token {GITHUB_TOKEN}",
@@ -120,7 +141,7 @@ try:
         current_content = gist_data['files'][filename]['content']
         
         static_clean = extract_static_channels(current_content)
-        print("✔️ تم تحديد وحفظ القنوات اليدوية بنجاح.")
+        print("✔️ تم تحديد القنوات اليدوية وحفظها.")
     else:
         print(f"❌ فشل جلب الـ Gist الحالي. كود الحالة: {gist_response.status_code}")
         exit(1)
@@ -131,7 +152,7 @@ except Exception as e:
 session = create_session()
 final_m3u_content = ""
 
-# 2. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV) المحددة
+# 2. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV) المحددة وتنظيف روابطها للريسيفر
 print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
 basha_separator = "# ==================== مجموعة قنوات AL BASHA TV ===================="
 basha_api_url = "https://albashatv.site/api.php"
@@ -150,21 +171,23 @@ try:
     basha_response = session.post(basha_api_url, headers=basha_headers, data=basha_payload, timeout=15)
     if basha_response.status_code == 200:
         basha_channels = basha_response.json()
-        print(f"✅ تم الاتصال بسيرفر الباشا بنجاح. إجمالي القنوات المتوفرة: ({len(basha_channels)}) قناة.")
+        print(f"✅ تم الاتصال بسيرفر الباشا بنجاح. إجمالي القنوات: ({len(basha_channels)}) قناة.")
         
         matched_count = 0
         for channel in basha_channels:
             channel_name = channel.get('name', '')
-            channel_url = channel.get('url', '')
+            raw_url = channel.get('url', '')
             
-            # فحص اسم القناة بمقارنة الحروف الصغيرة
             channel_name_lower = channel_name.lower()
             if any(target in channel_name_lower for target in basha_targets):
+                # استخراج الرابط المباشر وتنظيفه للجهاز
+                cleaned_url = clean_and_extract_url(raw_url)
+                
                 basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
-                basha_content += f'{channel_url}\n'
+                basha_content += f'{cleaned_url}\n'
                 matched_count += 1
                 
-        print(f"🎯 تم استخراج ({matched_count}) قناة مطابقة للشروط الفنية من الباشا تيفي.")
+        print(f"🎯 تم استخراج وتصحيح ({matched_count}) قناة لتصبح متوافقة مع الريسيفر.")
     else:
         print(f"❌ فشل جلب قنوات الباقة: AL BASHA TV")
 except Exception as e:
@@ -185,7 +208,6 @@ yacine_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
-# قيم الحماية المطلوبة لتشغيل بث ياسين على أجهزة الاستقبال والبرامج الأخرى
 ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 referer_value = "http://re.ycn-redirect.com/"
 
@@ -211,7 +233,6 @@ for category_url, quality in targets.items():
                     raw_url = stream.get('url')
                     final_url = get_final_url(raw_url)
                     
-                    # دمج الهيدرز للتوافق مع أجهزة الاستقبال بصيغة سطرين لكل قناة
                     final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}"
                     display_name = f"{channel_name} {quality}"
                     
@@ -220,7 +241,7 @@ for category_url, quality in targets.items():
                     print(f"      ✔️ نجاح.")
             time.sleep(0.5)
 
-# دمج المحتوى مع الحفاظ على الترتيب وحماية قنواتك اليدوية بالأسفل
+# دمج المحتوى بالترتيب مع الحفاظ على قنواتك اليدوية
 final_m3u_content = f"#EXTM3U\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
 
 # 4. تحديث الـ Gist الخاص بك
@@ -236,6 +257,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! تم استخراج القنوات المستهدفة من الباشا وياسين مع حماية قنواتك.")
+    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة ونظيفة وجاهزة للعمل على الريسيفر.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
