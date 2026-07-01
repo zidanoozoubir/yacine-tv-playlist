@@ -1,1 +1,25 @@
 #EXTM3U
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 1
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het104a.metava.online/live/610303030/index.m3u8?t=aQxly-OaZ5h3wrVvYkm68g&e=1782924630
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 2
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het108a.metava.online/live/1515000000/index.m3u8?t=OxKOG70tR5TqWXbyAsxbbA&e=1782925726
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 3
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het106a.metava.online/live/33523510/index.m3u8?t=4x_seidkQWv-qfzPefIomw&e=1782925753
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 4
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het101a.metava.online/live/918454578001/index.m3u8?t=CdTJ_MSmi_7EBRLFrXFcuw&e=1782926054
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 5
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het139a.metava.online/live/69854211/index.m3u8?t=-PVe0okW1QTXVMnX21Y0Vw&e=1782927171
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 6
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het128a.metava.online/live/645587700/index.m3u8?t=CgNq6MtOKgBPouMvCpWa4w&e=1782927190
