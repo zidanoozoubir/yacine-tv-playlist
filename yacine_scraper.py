@@ -2,13 +2,13 @@ import base64
 import requests
 import json
 import time
+import os
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-# ==================== إعدادات التصفية المستهدفة ====================
-# تم تحديد الأقسام الرياضية الأربعة المكتشفة لضمان جلب beIN و MAX بجودات FHD و HD
-TARGET_CATEGORIES = [4, 5, 90, 91]
-# ================================================================
+# جلب معلومات الـ Gist من متغيرات البيئة الآمنة (GitHub Secrets)
+GIST_ID = os.environ.get("GIST_ID")
+GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
 def decrypt_yacine(encrypted_data, header_t):
@@ -27,7 +27,6 @@ def decrypt_yacine(encrypted_data, header_t):
 # إنشاء جلسة عمل مشتركة (Session) للحفاظ على الكوكيز وتفادي الحظر
 def create_session():
     session = requests.Session()
-    # المحاولة التلقائية عند حدوث ضغط على السيرفر
     retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retries)
     session.mount('http://', adapter)
@@ -45,8 +44,6 @@ def fetch_and_decrypt(session, url, headers):
                 decrypted_json_str = decrypt_yacine(response.text, t_value)
                 if decrypted_json_str:
                     return json.loads(decrypted_json_str)
-            else:
-                print(f"⚠️ تحذير: لم يتم العثور على مفتاح T في الرابط: {url}")
         else:
             print(f"❌ فشل الاتصال بالرابط: {url} - كود الحالة: {response.status_code}")
     except Exception as e:
@@ -66,7 +63,43 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# ترويسات التطبيق الافتراضية
+# 1. جلب المحتوى الحالي من الـ Gist السري الخاص بك لتنظيفه والحفاظ على قنواتك الثابتة
+print("📂 جاري جلب محتوى الـ Gist الحالي...")
+gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
+gist_headers = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github+json"
+}
+
+try:
+    gist_response = requests.get(gist_api_url, headers=gist_headers, timeout=15)
+    if gist_response.status_code == 200:
+        gist_data = gist_response.json()
+        # جلب اسم الملف الأول داخل الـ Gist ومحتواه
+        filename = list(gist_data['files'].keys())[0]
+        current_content = gist_data['files'][filename]['content']
+        
+        # قص القنوات القديمة المضافة سابقاً للحفاظ على قنواتك الثابتة فقط ومنع التكرار اللانهائي
+        separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
+        if separator in current_content:
+            m3u_content = current_content.split(separator)[0].strip() + "\n"
+        else:
+            m3u_content = current_content.strip() + "\n"
+    else:
+        print(f"❌ فشل جلب الـ Gist الحالي. كود الحالة: {gist_response.status_code}")
+        exit(1)
+except Exception as e:
+    print(f"❌ خطأ أثناء الاتصال بـ Gist API: {e}")
+    exit(1)
+
+m3u_content += f"\n{separator}\n"
+
+# 2. بدء تشغيل جلسة سحب قنوات ياسين تيفي
+session = create_session()
+targets = {
+    "https://def.yacinelive.com/api/categories/90/channels": "FHD",
+    "https://def.yacinelive.com/api/categories/89/channels": "HD"
+}
 app_headers = {
     "Accept": "application/json",
     "Accept-Encoding": "gzip",
@@ -74,77 +107,49 @@ app_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
-session = create_session()
-
-# الباقات الرياضية المستهدفة التي سنقوم بسحبها مباشرة
-targets = {
-    "beIN SPORTS": "https://def.yacinelive.com/api/categories/90/channels",
-    "beIN MAX": "https://def.yacinelive.com/api/categories/89/channels"
-}
-
-# قاموس لتحديد جودة البث النظيفة بناءً على معرّف القسم
-category_resolution = {
-    4: "FHD",
-    5: "HD",
-    90: "FHD",
-    91: "HD"
-}
-
-m3u_content = "#EXTM3U\n"
-
-# المرور على الباقتين مباشرة
-for cat_name, category_url in targets.items():
-    # استخراج معرّف القسم من الرابط
-    try:
-        cat_id = int(category_url.split('/')[-2])
-    except Exception:
-        cat_id = 90
-        
-    print(f"\n📂 جاري جلب قنوات باقة: [{cat_name}]...")
+for category_url, quality in targets.items():
+    print(f"🔄 جاري سحب قنوات ياسين بجودة {quality}...")
     channels_data = fetch_and_decrypt(session, category_url, app_headers)
     
     if channels_data and 'data' in channels_data:
         channels_list = channels_data['data']
-        print(f"   📺 عثرنا على ({len(channels_list)}) قنوات في هذه الباقة.")
-        
-        # جلب روابط القنوات
         for index, channel in enumerate(channels_list):
             channel_name = channel.get('name')
             channel_id = channel.get('id')
             
             print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج: {channel_name}...")
-            
             channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
             detail_data = fetch_and_decrypt(session, channel_detail_url, app_headers)
             
             if detail_data and 'data' in detail_data:
                 streams = detail_data['data']
                 if streams:
-                    # نأخذ أول رابط بث متوفر
                     stream = streams[0]
                     raw_url = stream.get('url')
                     final_url = get_final_url(raw_url)
                     
-                    # تحديد الجودة النظيفة بناءً على القسم (FHD أو HD) بدلاً من مسميات السيرفر العشوائية
-                    clean_quality = category_resolution.get(cat_id, "HD")
-                    
-                    # دمج اسم القناة الأصلي مع الجودة النظيفة (مثال: beIN SPORTS 1 FHD أو beIN SPORTS MAX 1 HD)
-                    display_name = f"{channel_name} {clean_quality}"
-                    
-                    # كتابة السطر في ملف M3U
-                    m3u_content += f'#EXTINF:-1 tvg-logo="" group-title="{cat_name} ({clean_quality})", {display_name}\n'
+                    # تسمية القنوات وتجميعها تحت المسمى الجديد المطلوب
+                    display_name = f"{channel_name} {quality}"
+                    m3u_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
                     m3u_content += f'#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/\n'
                     m3u_content += f'#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\n'
                     m3u_content += f'{final_url}\n'
-                    print(f"      ✔️ تم جلب الرابط بنجاح.")
-            
-            # تأخير بسيط (0.5 ثانية) لمنع الحظر
+                    print(f"      ✔️ نجاح.")
             time.sleep(0.5)
-    else:
-        print(f"❌ فشل جلب قنوات الباقة: {cat_name}")
 
-# حفظ ملف M3U المشترك
-with open("playlist.m3u", "w", encoding="utf-8") as f:
-    f.write(m3u_content)
+# 3. تحديث الـ Gist السري الخاص بك مباشرة بالملف الجديد المدمج
+print("\n🔐 جاري تحديث الـ Gist السري الخاص بك برابط البث الجديد...")
+update_data = {
+    "files": {
+        filename: {
+            "content": m3u_content
+        }
+    }
+}
 
-print("\n🎉 مبروك! تم جلب وتنسيق القنوات بمسميات نظيفة واحترافية بالكامل!")
+update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
+
+if update_response.status_code == 200:
+    print("🎉 تم تحديث الـ Gist السري الخاص بك بنجاح تام! القنوات تعمل الآن على الريسيفر.")
+else:
+    print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
