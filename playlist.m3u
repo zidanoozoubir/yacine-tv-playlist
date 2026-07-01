@@ -1,5 +1,25 @@
 #EXTM3U
-#EXTINF:-1 tvg-logo="" group-title="Yacine TV", beIN Sports 1
+#EXTINF:-1 tvg-logo="" group-title="Yacine TV", beIN MAX 1
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het140a.metava.online/live/610303030/index.m3u8?t=Y-ej63WfXE2ErKlH71D1tw&e=1782910348
+http://het108a.metava.online/live/610303030/index.m3u8?t=PUejlFikp016SuZmsu11Nw&e=1782912029
+#EXTINF:-1 tvg-logo="" group-title="Yacine TV", beIN MAX 2
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het129a.metava.online/live/1515000000/index.m3u8?t=eY9Tk20aZ9hWAgmEkWrpWw&e=1782912387
+#EXTINF:-1 tvg-logo="" group-title="Yacine TV", beIN MAX 3
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het121a.metava.online/live/33523510/index.m3u8?t=EUrgdmKdUcNkJ8LxzPI7jQ&e=1782912388
+#EXTINF:-1 tvg-logo="" group-title="Yacine TV", beIN MAX 4
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het137a.metava.online/live/918454578001/index.m3u8?t=5JIdHbgPxWIK73s_nKSH_w&e=1782902411
+#EXTINF:-1 tvg-logo="" group-title="Yacine TV", beIN MAX 5
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het101a.metava.online/live/69854211/index.m3u8?t=b80CCH6RQMJDEZo0cN-Xmw&e=1782912389
+#EXTINF:-1 tvg-logo="" group-title="Yacine TV", beIN MAX 6
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het120a.metava.online/live/645587700/index.m3u8?t=d5HX0EVMtHMlo2dvAk0UkQ&e=1782910046
