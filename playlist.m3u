@@ -1,25 +1,33 @@
 #EXTM3U
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 1
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 1 - HD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het104a.metava.online/live/610303030/index.m3u8?t=aQxly-OaZ5h3wrVvYkm68g&e=1782924630
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 2
+http://het132a.metava.online/live/610303030/index.m3u8?t=p71xu2RLQQIaJBKkCTCy3A&e=1782930477
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 1 - FHD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het108a.metava.online/live/1515000000/index.m3u8?t=OxKOG70tR5TqWXbyAsxbbA&e=1782925726
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 3
+https://r2-cdn.cfd/iptv-1/index.m3u8
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 2 - HD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het106a.metava.online/live/33523510/index.m3u8?t=4x_seidkQWv-qfzPefIomw&e=1782925753
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 4
+http://het133a.metava.online/live/1515000000/index.m3u8?t=yvR1jdvU9q0LWqpgrr44bA&e=1782933767
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 2 - FHD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het101a.metava.online/live/918454578001/index.m3u8?t=CdTJ_MSmi_7EBRLFrXFcuw&e=1782926054
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 5
+https://live3.wegoal5.win/BMax2-4/index.m3u8
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 3 - HD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het139a.metava.online/live/69854211/index.m3u8?t=-PVe0okW1QTXVMnX21Y0Vw&e=1782927171
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 6
+http://het126a.metava.online/live/33523510/index.m3u8?t=Vg2_1lVXAUA3udEWcfty-w&e=1782933769
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 4 - HD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het128a.metava.online/live/645587700/index.m3u8?t=CgNq6MtOKgBPouMvCpWa4w&e=1782927190
+http://het128a.metava.online/live/918454578001/index.m3u8?t=v7L8BhtHLEMPMVHnQ6xiCA&e=1782933770
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 5 - HD
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het112a.metava.online/live/69854211/index.m3u8?t=a3L-jpbEi4vy5wJ4W45Uuw&e=1782933771
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS", beIN MAX 6 - HD
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het129a.metava.online/live/645587700/index.m3u8?t=Lwt1IuV2k-dsttq-bRObYQ&e=1782933772
