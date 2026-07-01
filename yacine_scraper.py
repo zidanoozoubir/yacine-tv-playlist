@@ -6,9 +6,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
 # ==================== إعدادات التصفية (الفلتر) ====================
-# اكتب الكلمات التي تريد جلب القنوات بناءً عليها (اترك القائمة فارغة لجلب كل القنوات)
-# السكربت سيبحث بشكل ذكي دون الاهتمام بالحروف الكبيرة أو الصغيرة
-FILTER_KEYWORDS = ["bein", "bien", "sport"] 
+# الكلمات المفتاحية المطلوبة لتصفية قنوات بي إن سبورت وقنوات الماكس
+FILTER_KEYWORDS = ["bein", "bien", "max"] 
 # ================================================================
 
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
@@ -64,6 +63,7 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
+# ترويسات التطبيق الافتراضية
 app_headers = {
     "Accept": "application/json",
     "Accept-Encoding": "gzip",
@@ -98,21 +98,16 @@ if categories_data and 'data' in categories_data:
         if channels_data and 'data' in channels_data:
             channels_list = channels_data['data']
             
-            # --- عملية الفلترة الذكية ---
+            # --- عملية الفلترة الذكية لقنوات beIN و Max فقط ---
             filtered_channels = []
             for channel in channels_list:
                 ch_name = channel.get('name', '')
-                # إذا كانت قائمة الفلاتر فارغة، نأخذ كل القنوات
-                if not FILTER_KEYWORDS:
+                if any(keyword.lower() in ch_name.lower() for keyword in FILTER_KEYWORDS):
                     filtered_channels.append(channel)
-                else:
-                    # التحقق مما إذا كان اسم القناة يحتوي على أي من الكلمات المفتاحية
-                    if any(keyword.lower() in ch_name.lower() for keyword in FILTER_KEYWORDS):
-                        filtered_channels.append(channel)
             # ---------------------------
             
             if filtered_channels:
-                print(f"\n📂 قسم [{cat_name}] يحتوي على ({len(filtered_channels)}) قنوات مطابقة للفلتر.")
+                print(f"\n📂 قسم [{cat_name}] يحتوي على ({len(filtered_channels)}) قنوات مطابقة لطلبك.")
                 
                 # 3. المرور على القنوات المطابقة فقط
                 for index, channel in enumerate(filtered_channels):
@@ -146,4 +141,4 @@ else:
 with open("playlist.m3u", "w", encoding="utf-8") as f:
     f.write(m3u_content)
 
-print("\n🎉 تم تحديث ملف playlist.m3u بالقنوات المطلوبة فقط بنجاح وبسرعة فائقة!")
+print("\n🎉 تم تحديث ملف playlist.m3u بقنوات beIN و Max المطلوبة فقط!")
