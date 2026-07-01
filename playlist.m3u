@@ -1,141 +1,25 @@
 #EXTM3U
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN SPORTS 1 - HD
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (FHD)", beIN MAX 1 FHD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het120a.metava.online/live/918454578001/index.m3u8?t=e750haFF3qKEkG2Zv2DWHQ&e=1782934957
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN SPORTS 2 - HD
+http://het130a.metava.online/live/610303030/index.m3u8?t=9xoeyoR4eNtkWRRTO-PcTQ&e=1782929174
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (FHD)", beIN MAX 2 FHD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het116a.metava.online/live/69854211/index.m3u8?t=flvHmx8nNXe2h8QvNgjbsQ&e=1782928455
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN SPORTS 3 - HD
+http://het106a.metava.online/live/1515000000/index.m3u8?t=TF9SP2-MsjaB-6FNzhDklg&e=1782933650
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (FHD)", beIN MAX 3 FHD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het103a.metava.online/live/645587700/index.m3u8?t=3gbygrTYCgYM19msJ-p9Wg&e=1782930622
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN SPORTS 4 - 1
+http://het120a.metava.online/live/33523510/index.m3u8?t=VbvKfLOqnP8lrvQApOQhtQ&e=1782935954
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (FHD)", beIN MAX 4 FHD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het103a.metava.online/live/9787488847/index.m3u8?t=SAe7Kr9LPFvG5M7bzahnTg&e=1782929587
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN SPORTS 5 - HD
+http://het127a.metava.online/live/918454578001/index.m3u8?t=QC0g7mmk-AtcoB9yF7FPPA&e=1782922049
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (FHD)", beIN MAX 5 FHD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het113a.metava.online/live/610303030/index.m3u8?t=ZEGQ5m74S3zFFbs9wlKdQQ&e=1782929000
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN SPORTS 6 - 1
+http://het135a.metava.online/live/69854211/index.m3u8?t=p75vnBrgUAyUv9ROQTuXZA&e=1782935956
+#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (FHD)", beIN MAX 6 FHD
 #EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het126a.metava.online/live/1515000000/index.m3u8?t=ao2a9mUACakmq9DIN-0uuA&e=1782923935
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN SPORTS 7 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het133a.metava.online/live/33523510/index.m3u8?t=_O_FQR8CFo261hYJ71OwnA&e=1782932000
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN SPORTS 8 - Multi
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-https://het5555.ycn-redirect.com/live/lb2/bs8-multi.m3u8
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN SPORTS 9 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het134a.metava.online/live/34114434/index.m3u8?t=VwvcGGvcoAmHkvtM2iRROA&e=1782933013
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN XTRA 1 - Multi
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-https://het5555.ycn-redirect.com/live/lb2/bx1-multi.m3u8
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN XTRA 1 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het126a.metava.online/live/996251000/index.m3u8?t=pxD84_aeKtgw2KPOo5XleA&e=1782933014
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN XTRA 2 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het137a.metava.online/live/33523510/index.m3u8?t=AoY4jSnZk9DwaXh4SmJVjw&e=1782933015
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN XTRA 3 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het140a.metava.online/live/61512788878/index.m3u8?t=hMZSuC7SwdcqTe7byoJoBQ&e=1782933016
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN France 3 - Multi
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-https://x.com/i/broadcasts/1RDGlaNRdbOJL$$m3u8
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN France 3 - Multi II
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-https://x.com/i/broadcasts/1RDGlaNRdbOJL$$m3u8
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN News - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het140a.metava.online/live/674534/index.m3u8?t=Qlk9aHgzpRduGGS_pAQ5sg&e=1782930798
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN SPORTS - Multi
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-https://het5555.ycn-redirect.com/live/lb2/bs-multi.m3u8
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN SPORTS - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het116a.metava.online/live/5756345/index.m3u8?t=0K7sLj7Bfg0HDC_ccuOTrw&e=1782923942
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (1080P)", beIN English 3 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-https://sp.rmbl.ws/s8/2/Q/x/v/y/Qxeyg.caa.mp4$$get_video
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN SPORTS 1 - HD
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het113a.metava.online/live/918454578001/index.m3u8?t=TFq063R7h77qE7mL5BBl_g&e=1782928939
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN SPORTS 2 - HD
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het140a.metava.online/live/69854211/index.m3u8?t=CDnTElh7wXdKxc39Hx4nrg&e=1782929777
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN SPORTS 3 - HD
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het124a.metava.online/live/645587700/index.m3u8?t=SyMvsmGkMURc7Njud6dzfQ&e=1782930008
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN SPORTS 4 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het124a.metava.online/live/9787488847/index.m3u8?t=91BvQJ32Afn8ZN4K9A6t5Q&e=1782923947
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN SPORTS 5 - HD
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het119a.metava.online/live/610303030/index.m3u8?t=EvZNnVQgn4ay5VcV0nx5Yg&e=1782933024
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN SPORTS 6 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het107a.metava.online/live/1515000000/index.m3u8?t=tBLoB_YQTwjuvdYs5Wv1vQ&e=1782932353
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN SPORTS 7 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het126a.metava.online/live/33523510/index.m3u8?t=9KypMVaZuEOD1aKyJm-8BQ&e=1782933026
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN SPORTS 8 - HD
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het114a.metava.online/live/996251000/index.m3u8?t=uWy71qaAIIyDmMP-LIiFKA&e=1782933027
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN SPORTS 9 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het104a.metava.online/live/34114434/index.m3u8?t=JqdVTbN_z--Z87NYSjmE_Q&e=1782933028
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN XTRA 1 - Multi
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-https://het5555.ycn-redirect.com/live/lb2/bx1-multi.m3u8
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN XTRA 1 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het114a.metava.online/live/996251000/index.m3u8?t=Gz-E029Lj7_u4Y1lOHP1HQ&e=1782933028
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN XTRA 2 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het138a.metava.online/live/33523510/index.m3u8?t=8eB7AwkGLYbZSHkZO2Jhag&e=1782933029
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN XTRA 3 - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het132a.metava.online/live/61512788878/index.m3u8?t=Wr6H0DdqvQEq9_V13gHNdg&e=1782933030
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN News - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het120a.metava.online/live/674534/index.m3u8?t=tLJ8FcDsM14FDRIOq_X2hw&e=1782923955
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN SPORTS - 1
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-http://het100a.metava.online/live/33523510/index.m3u8?t=-ro0-c5RcObRxxIf6c_37w&e=1782923955
-#EXTINF:-1 tvg-logo="" group-title="beIN SPORTS (720P)", beIN English 3 - 2
-#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
-#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
-https://sp.rmbl.ws/s8/2/Q/x/e/y/Qxeyg.gaa.mp4?u=1k6g2k&b=1
+http://het106a.metava.online/live/645587700/index.m3u8?t=I4WcXj_eDYd2FcK2RuE0OA&e=1782935957
