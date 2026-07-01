@@ -1,0 +1,5 @@
+#EXTM3U
+#EXTINF:-1 tvg-logo="" group-title="Yacine TV", beIN Sports 1
+#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+http://het140a.metava.online/live/610303030/index.m3u8?t=Y-ej63WfXE2ErKlH71D1tw&e=1782910348
