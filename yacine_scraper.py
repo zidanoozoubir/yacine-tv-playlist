@@ -46,7 +46,7 @@ def fetch_and_decrypt(session, url, headers):
                 if decrypted_json_str:
                     return json.loads(decrypted_json_str)
             else:
-                print(f"⚠️ تحذير: لم يتم العثور على مفتاح T في الرد من {url}")
+                print(f"⚠️ تحذير: لم يتم العثور على مفتاح T في الرابط: {url}")
         else:
             print(f"❌ فشل الاتصال بالرابط: {url} - كود الحالة: {response.status_code}")
     except Exception as e:
@@ -76,72 +76,75 @@ app_headers = {
 
 session = create_session()
 
-# جلب قائمة الأقسام الرئيسية لمعرفة الأسماء
-categories_url = "https://def.yacinelive.com/api/categories"
-print("🔄 جاري الاتصال بالسيرفر وجلب الأقسام المحددة...")
-categories_data = fetch_and_decrypt(session, categories_url, app_headers)
+# الباقات الرياضية المستهدفة التي سنقوم بسحبها مباشرة
+targets = {
+    "beIN SPORTS": "https://def.yacinelive.com/api/categories/90/channels",
+    "beIN MAX": "https://def.yacinelive.com/api/categories/89/channels"
+}
+
+# قاموس لتحديد جودة البث النظيفة بناءً على معرّف القسم
+category_resolution = {
+    4: "FHD",
+    5: "HD",
+    90: "FHD",
+    91: "HD"
+}
 
 m3u_content = "#EXTM3U\n"
 
-if categories_data and 'data' in categories_data:
-    categories_list = categories_data['data']
-    
-    # فلترة الأقسام بناءً على الأقسام الأربعة الرياضية المستهدفة فقط
-    selected_categories = [c for c in categories_list if c.get('id') in TARGET_CATEGORIES]
-    print(f"✅ تم العثور على الأقسام المطلوبة: {[c.get('name') for c in selected_categories]}")
-    
-    # 2. المرور على الأقسام الرياضية المستهدفة فقط
-    for cat in selected_categories:
-        cat_name = cat.get('name')
-        cat_id = cat.get('id')
+# المرور على الباقتين مباشرة
+for cat_name, category_url in targets.items():
+    # استخراج معرّف القسم من الرابط
+    try:
+        cat_id = int(category_url.split('/')[-2])
+    except Exception:
+        cat_id = 90
         
-        print(f"\n📂 جاري سحب قنوات باقة: [{cat_name}]...")
-        category_channels_url = f"https://def.yacinelive.com/api/categories/{cat_id}/channels"
-        channels_data = fetch_and_decrypt(session, category_channels_url, app_headers)
+    print(f"\n📂 جاري جلب قنوات باقة: [{cat_name}]...")
+    channels_data = fetch_and_decrypt(session, category_url, app_headers)
+    
+    if channels_data and 'data' in channels_data:
+        channels_list = channels_data['data']
+        print(f"   📺 عثرنا على ({len(channels_list)}) قنوات في هذه الباقة.")
         
-        if channels_data and 'data' in channels_data:
-            channels_list = channels_data['data']
-            print(f"   📺 عثرنا على ({len(channels_list)}) قنوات في هذه الباقة.")
+        # جلب روابط القنوات
+        for index, channel in enumerate(channels_list):
+            channel_name = channel.get('name')
+            channel_id = channel.get('id')
             
-            # 3. جلب جميع جودات القنوات مباشرة
-            for index, channel in enumerate(channels_list):
-                channel_name = channel.get('name')
-                channel_id = channel.get('id')
-                
-                print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج قنوات وجودات: {channel_name}...")
-                
-                channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
-                detail_data = fetch_and_decrypt(session, channel_detail_url, app_headers)
-                
-                if detail_data and 'data' in detail_data:
-                    streams = detail_data['data']
-                    if streams:
-                        # المرور على جميع جودات البث المتوفرة لهذه القناة وإضافتها بالكامل
-                        for stream in streams:
-                            stream_quality = stream.get('name', 'SD') # اسم الجودة (مثال: 1080p, 720p, 360p)
-                            raw_url = stream.get('url')
-                            final_url = get_final_url(raw_url)
-                            
-                            # دمج اسم القناة مع اسم الجودة لتبدو منسقة (مثل: beIN SPORTS 1 - 1080P)
-                            display_name = f"{channel_name} - {stream_quality}"
-                            
-                            m3u_content += f'#EXTINF:-1 tvg-logo="" group-title="{cat_name}", {display_name}\n'
-                            m3u_content += f'#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/\n'
-                            m3u_content += f'#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\n'
-                            m3u_content += f'{final_url}\n'
-                            print(f"      ✔️ جودة {stream_quality}: نجاح.")
-                    else:
-                        print(f"      ⚠️ لا توجد جودات بث متوفرة لهذه القناة.")
-                
-                # تأخير بسيط (0.5 ثانية) لمنع الحظر
-                time.sleep(0.5)
-        else:
-            print(f"❌ فشل جلب قنوات الباقة: {cat_name}")
-else:
-    print("❌ فشل الاتصال بالسيرفر الرئيسي وجلب الأقسام.")
+            print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج: {channel_name}...")
+            
+            channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
+            detail_data = fetch_and_decrypt(session, channel_detail_url, app_headers)
+            
+            if detail_data and 'data' in detail_data:
+                streams = detail_data['data']
+                if streams:
+                    # نأخذ أول رابط بث متوفر
+                    stream = streams[0]
+                    raw_url = stream.get('url')
+                    final_url = get_final_url(raw_url)
+                    
+                    # تحديد الجودة النظيفة بناءً على القسم (FHD أو HD) بدلاً من مسميات السيرفر العشوائية
+                    clean_quality = category_resolution.get(cat_id, "HD")
+                    
+                    # دمج اسم القناة الأصلي مع الجودة النظيفة (مثال: beIN SPORTS 1 FHD أو beIN SPORTS MAX 1 HD)
+                    display_name = f"{channel_name} {clean_quality}"
+                    
+                    # كتابة السطر في ملف M3U
+                    m3u_content += f'#EXTINF:-1 tvg-logo="" group-title="{cat_name} ({clean_quality})", {display_name}\n'
+                    m3u_content += f'#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/\n'
+                    m3u_content += f'#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\n'
+                    m3u_content += f'{final_url}\n'
+                    print(f"      ✔️ تم جلب الرابط بنجاح.")
+            
+            # تأخير بسيط (0.5 ثانية) لمنع الحظر
+            time.sleep(0.5)
+    else:
+        print(f"❌ فشل جلب قنوات الباقة: {cat_name}")
 
 # حفظ ملف M3U المشترك
 with open("playlist.m3u", "w", encoding="utf-8") as f:
     f.write(m3u_content)
 
-print("\n🎉 مبروك! تم جلب الباقتين بجميع الجودات المتوفرة بنجاح وبسرعة فائقة في ملف واحد!")
+print("\n🎉 مبروك! تم جلب وتنسيق القنوات بمسميات نظيفة واحترافية بالكامل!")
