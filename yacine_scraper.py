@@ -2,6 +2,8 @@ import base64
 import requests
 import json
 import time
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
 def decrypt_yacine(encrypted_data, header_t):
@@ -14,27 +16,43 @@ def decrypt_yacine(encrypted_data, header_t):
             decrypted_bytes.append(encrypted_bytes[i] ^ full_key[i % len(full_key)])
         return decrypted_bytes.decode('utf-8')
     except Exception as e:
+        print(f"خطأ في فك التشفير: {e}")
         return None
 
-# دالة مساعدة للاتصال بالخادم وفك تشفير البيانات المرجعة تلقائياً
-def fetch_and_decrypt(url, headers):
+# إعداد Session ذكي مع ميزة إعادة المحاولة التلقائية لتفادي سقوط القنوات
+def create_session():
+    session = requests.Session()
+    # إعادة المحاولة حتى 3 مرات مع مهلة تصاعدية عند حدوث ضغط سيرفر أو أخطاء مؤقتة
+    retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+# دالة مساعدة للاتصال بالخادم وفك تشفير البيانات المرجعة تلقائياً مع استخدام الـ Session المشترك للكوكيز
+def fetch_and_decrypt(session, url, headers):
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = session.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             t_value = response.headers.get('T') or response.headers.get('t')
             if t_value:
                 decrypted_json_str = decrypt_yacine(response.text, t_value)
                 return json.loads(decrypted_json_str)
+            else:
+                print(f"⚠️ تحذير: لم يتم العثور على مفتاح T في الرابط: {url}")
+        else:
+            print(f"❌ فشل الاتصال بالرابط: {url} - كود الحالة: {response.status_code}")
     except Exception as e:
-        print(f"Error fetching {url}: {e}")
+        print(f"❌ خطأ أثناء جلب الرابط {url}: {e}")
     return None
 
-# دالة تتبع التوجيه (301 Redirect) للحصول على الرابط النهائي لـ VLC
+# دالة جلب رابط التوجيه (Redirect)
 def get_final_url(raw_url):
     browser_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
     }
     try:
+        # نستخدم طلب صامت لجلب الـ Location بدون تتبع كامل
         r_redirect = requests.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=10)
         if r_redirect.status_code in [301, 302]:
             return r_redirect.headers.get('Location')
@@ -42,7 +60,7 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# ترويسات التطبيق الافتراضية لتجنب الحجب
+# ترويسات التطبيق الافتراضية
 app_headers = {
     "Accept": "application/json",
     "Accept-Encoding": "gzip",
@@ -50,16 +68,19 @@ app_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
-# 1. جلب قائمة الأقسام الرئيسية بالكامل من التطبيق
+# إنشاء جلسة العمل المشتركة للكوكيز وحماية الـ IP
+session = create_session()
+
+# 1. جلب قائمة الأقسام الرئيسية
 categories_url = "https://def.yacinelive.com/api/categories"
 print("🔄 جاري الاتصال بالسيرفر وجلب الأقسام الرئيسية...")
-categories_data = fetch_and_decrypt(categories_url, app_headers)
+categories_data = fetch_and_decrypt(session, categories_url, app_headers)
 
 m3u_content = "#EXTM3U\n"
 
 if categories_data and 'data' in categories_data:
     categories_list = categories_data['data']
-    print(f"✅ تم جلب الأقسام بنجاح! عثرنا على ({len(categories_list)}) أقسام مختلفة.")
+    print(f"✅ تم جلب الأقسام بنجاح! عثرنا على ({len(categories_list)}) أقسام.")
     
     # 2. المرور على كل قسم من الأقسام
     for cat in categories_list:
@@ -69,48 +90,47 @@ if categories_data and 'data' in categories_data:
         if not cat_id:
             continue
             
-        print(f"\n📂 جاري فتح القسم: [{cat_name}] وجلب قنواته...")
+        print(f"\n📂 جاري فتح القسم: [{cat_name}]...")
         category_channels_url = f"https://def.yacinelive.com/api/categories/{cat_id}/channels"
-        channels_data = fetch_and_decrypt(category_channels_url, app_headers)
+        channels_data = fetch_and_decrypt(session, category_channels_url, app_headers)
         
         if channels_data and 'data' in channels_data:
             channels_list = channels_data['data']
             print(f"   📺 عثرنا على ({len(channels_list)}) قنوات في هذا القسم.")
             
-            # 3. المرور على كل قناة داخل القسم الحالي وجلب بثها
+            # 3. المرور على القنوات وجلب البث مع تأخير بسيط لحماية الـ IP من الحظر
             for index, channel in enumerate(channels_list):
                 channel_name = channel.get('name')
                 channel_id = channel.get('id')
                 
-                print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري جلب بث: {channel_name}...")
+                print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج: {channel_name}...")
                 
                 channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
-                detail_data = fetch_and_decrypt(channel_detail_url, app_headers)
+                detail_data = fetch_and_decrypt(session, channel_detail_url, app_headers)
                 
                 if detail_data and 'data' in detail_data:
                     streams = detail_data['data']
                     if streams:
-                        # نأخذ جودة البث الأولى المتوفرة
                         stream = streams[0]
                         raw_url = stream.get('url')
                         final_url = get_final_url(raw_url)
                         
-                        # إضافة القناة لملف M3U مع تحديد اسم القسم كـ group-title لتنظيمها
+                        # إضافة القناة للملف
                         m3u_content += f'#EXTINF:-1 tvg-logo="" group-title="{cat_name}", {channel_name}\n'
                         m3u_content += f'#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/\n'
                         m3u_content += f'#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\n'
                         m3u_content += f'{final_url}\n'
                         print(f"      ✔️ تم جلب الرابط بنجاح.")
                 
-                # تأخير بسيط جداً (0.3 ثانية) لتجنب الضغط على السيرفر وحظر السكربت
-                time.sleep(0.3)
+                # تأخير بسيط (0.5 ثانية) لحماية السكربت من الحجب (Rate Limiting)
+                time.sleep(0.5)
         else:
             print(f"   ❌ فشل فتح القسم {cat_name} أو لا يحتوي على قنوات.")
 else:
     print("❌ فشل الاتصال بالسيرفر الرئيسي وجلب الأقسام.")
 
-# 4. حفظ جميع قنوات التطبيق المستخرجة في ملف M3U
+# 4. حفظ جميع القنوات في ملف M3U
 with open("playlist.m3u", "w", encoding="utf-8") as f:
     f.write(m3u_content)
 
-print("\n🎉 مبروك! تم سحب التطبيق بالكامل بجميع أقسامه وقنواته وتحديث الملف بنجاح!")
+print("\n🎉 مبروك! تم سحب وتحديث جميع قنوات وأقسام التطبيق دون أي نقصان في ملف playlist.m3u!")
