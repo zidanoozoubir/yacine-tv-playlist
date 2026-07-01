@@ -6,7 +6,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
 # ==================== إعدادات التصفية (الفلتر) ====================
-# الكلمات المفتاحية المطلوبة لتصفية قنوات بي إن سبورت وقنوات الماكس
+# الكلمات التي يبحث عنها السكربت في جميع الأقسام
 FILTER_KEYWORDS = ["bein", "bien", "max"] 
 # ================================================================
 
@@ -24,16 +24,17 @@ def decrypt_yacine(encrypted_data, header_t):
         print(f"خطأ في فك التشفير: {e}")
         return None
 
-# إعداد Session ذكي مع ميزة إعادة المحاولة التلقائية لتفادي سقوط القنوات
+# إنشاء جلسة عمل مشتركة (Session) للحفاظ على الكوكيز وتفادي الحظر
 def create_session():
     session = requests.Session()
+    # المحاولة التلقائية عند حدوث ضغط على السيرفر
     retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retries)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
 
-# دالة مساعدة للاتصال بالخادم وفك تشفير البيانات المرجعة تلقائياً
+# دالة للاتصال بالسيرفر وفك تشفير البيانات تلقائياً مع استخدام الـ Session المشترك للكوكيز
 def fetch_and_decrypt(session, url, headers):
     try:
         response = session.get(url, headers=headers, timeout=10)
@@ -71,11 +72,12 @@ app_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
+# إنشاء جلسة العمل المشتركة للكوكيز وحماية الـ IP
 session = create_session()
 
-# 1. جلب قائمة الأقسام الرئيسية
+# 1. جلب قائمة جميع الأقسام المتوفرة في التطبيق
 categories_url = "https://def.yacinelive.com/api/categories"
-print("🔄 جاري الاتصال بالسيرفر وجلب الأقسام الرئيسية...")
+print("🔄 جاري الاتصال بالسيرفر وجلب الأقسام بالكامل...")
 categories_data = fetch_and_decrypt(session, categories_url, app_headers)
 
 m3u_content = "#EXTM3U\n"
@@ -84,7 +86,7 @@ if categories_data and 'data' in categories_data:
     categories_list = categories_data['data']
     print(f"✅ تم جلب الأقسام بنجاح! عثرنا على ({len(categories_list)}) أقسام.")
     
-    # 2. المرور على كل قسم من الأقسام
+    # 2. المرور على كل قسم من الأقسام المكتشفة تلقائياً
     for cat in categories_list:
         cat_name = cat.get('name')
         cat_id = cat.get('id')
@@ -92,24 +94,25 @@ if categories_data and 'data' in categories_data:
         if not cat_id:
             continue
             
+        print(f"\n📂 جاري فحص القسم: [{cat_name}]...")
         category_channels_url = f"https://def.yacinelive.com/api/categories/{cat_id}/channels"
         channels_data = fetch_and_decrypt(session, category_channels_url, app_headers)
         
         if channels_data and 'data' in channels_data:
             channels_list = channels_data['data']
             
-            # --- عملية الفلترة الذكية لقنوات beIN و Max فقط ---
+            # --- تصفية القنوات حسب الكلمات المفتاحية ---
             filtered_channels = []
             for channel in channels_list:
                 ch_name = channel.get('name', '')
                 if any(keyword.lower() in ch_name.lower() for keyword in FILTER_KEYWORDS):
                     filtered_channels.append(channel)
-            # ---------------------------
+            # -------------------------------------------
             
             if filtered_channels:
-                print(f"\n📂 قسم [{cat_name}] يحتوي على ({len(filtered_channels)}) قنوات مطابقة لطلبك.")
+                print(f"   📺 عثرنا على ({len(filtered_channels)}) قنوات مطابقة لطلبك في هذا القسم.")
                 
-                # 3. المرور على القنوات المطابقة فقط
+                # 3. جلب الروابط الحقيقية للقنوات المطابقة فقط
                 for index, channel in enumerate(filtered_channels):
                     channel_name = channel.get('name')
                     channel_id = channel.get('id')
@@ -126,19 +129,20 @@ if categories_data and 'data' in categories_data:
                             raw_url = stream.get('url')
                             final_url = get_final_url(raw_url)
                             
-                            # إضافة القناة للملف
+                            # إضافة القناة للملف مع الحفاظ على اسم القسم للتنظيم
                             m3u_content += f'#EXTINF:-1 tvg-logo="" group-title="{cat_name}", {channel_name}\n'
                             m3u_content += f'#EXTVLCOPT:http-referrer=http://re.ycn-redirect.com/\n'
                             m3u_content += f'#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\n'
                             m3u_content += f'{final_url}\n'
-                            print(f"      ✔️ تم بنجاح.")
+                            print(f"      ✔️ تم جلب الرابط بنجاح.")
                     
+                    # تأخير بسيط (0.5 ثانية) لتجنب الحظر
                     time.sleep(0.5)
 else:
     print("❌ فشل الاتصال بالسيرفر الرئيسي وجلب الأقسام.")
 
-# 4. حفظ القنوات المصفاة في ملف M3U
+# 4. حفظ جميع القنوات المستخرجة في ملف M3U واحد مشترك
 with open("playlist.m3u", "w", encoding="utf-8") as f:
     f.write(m3u_content)
 
-print("\n🎉 تم تحديث ملف playlist.m3u بقنوات beIN و Max المطلوبة فقط!")
+print("\n🎉 مبروك! تم جلب وتحديث جميع قنوات beIN وقنوات MAX بنجاح في ملف واحد!")
