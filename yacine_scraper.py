@@ -67,9 +67,10 @@ def extract_static_channels(m3u_content):
     static_lines = []
     current_channel_block = []
     
+    # تم استبعاد قنوات البث المباشر المحددة لمنع تكرارها في القسم الثابت
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
-        "albashatv.site", "playcasta.online", "AL BASHA TV"
+        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live"
     ]
 
     for line in lines:
@@ -101,6 +102,22 @@ def extract_static_channels(m3u_content):
             
     return "\n".join(static_lines).strip()
 
+# دالة مخصصة لتصفية القنوات العربية والفرنسية فقط للباشا تيفي
+def is_arabic_or_french(name):
+    name_lower = name.lower()
+    # 1. فحص وجود أي حرف عربي في اسم القناة
+    if any('\u0600' <= char <= '\u06FF' for char in name):
+        return True
+    # 2. الكلمات الدلالية للقنوات العربية الرياضية والترفيهية المكتوبة بالإنجليزية
+    arabic_keywords = ["bein", "osn", "mbc", "ssc", "shahid", "art", "rotana", "al jazeera", "vip", "basha", "ar:", "arabic"]
+    if any(kw in name_lower for kw in arabic_keywords):
+        return True
+    # 3. الكلمات الدلالية للقنوات الفرنسية الشهيرة
+    french_keywords = ["fr:", "fr ", "(fr)", "[fr]", "france", "canal+", "canal plus", "rmc", "tf1", "m6", "ocs", "ciné+", "cine+"]
+    if any(kw in name_lower for kw in french_keywords):
+        return True
+    return False
+
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
 print("📂 جاري جلب محتوى الـ Gist الحالي...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
@@ -131,7 +148,18 @@ except Exception as e:
 session = create_session()
 final_m3u_content = ""
 
-# 2. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV)
+# 2. تهيئة وتجهيز باقة قنوات LIVE المباشرة الجديدة بالترتيب الأول (تحديث الأسماء المطلوبة)
+print("\n⚽ جاري تهيئة مجموعة قنوات LIVE المباشرة...")
+live_separator = "# ==================== مجموعة قنوات LIVE ===================="
+live_url = "https://majed-koora.live/stream.php?channel=majed20267&file=stream.m3u8"
+live_content = (
+    f'#EXTINF:-1 tvg-logo="" group-title="LIVE", Match LIVE TV FHD\n'
+    f'{live_url}\n'
+    f'#EXTINF:-1 tvg-logo="" group-title="LIVE", Match LIVE TV HD\n'
+    f'{live_url}\n'
+)
+
+# 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV) - العربية والفرنسية فقط
 print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
 basha_separator = "# ==================== مجموعة قنوات AL BASHA TV ===================="
 basha_api_url = "https://albashatv.site/api.php"
@@ -143,7 +171,6 @@ basha_headers = {
 
 # جلب الباقات العادية وباقات الـ VIP
 basha_payloads = ["method=o6&event=view", "method=o2&event=view"]
-basha_targets = ["bein max", "bein sport", "osn", "netflix", "bein media", "hbo", "amazon prime", "amazon", "vip"]
 
 basha_content = ""
 seen_basha_urls = set() 
@@ -156,14 +183,16 @@ for payload in basha_payloads:
             basha_channels = basha_response.json()
             
             for channel in basha_channels:
-                channel_name = channel.get('name', '')
+                channel_name = channel.get('name') or ''
                 raw_url = channel.get('url', '')
                 
                 if not raw_url or raw_url in seen_basha_urls:
                     continue
                     
-                channel_name_lower = channel_name.lower()
-                if any(target in channel_name_lower for target in basha_targets):
+                channel_name_lower = channel_name.lower() if channel_name else ""
+                
+                # تصفية قوية وآمنة: جلب القنوات العربية والفرنسية فقط
+                if is_arabic_or_french(channel_name):
                     
                     # إضافة بروكسي الباشا تيفي للرابط لكي يعمل بشكل صحيح
                     if not raw_url.startswith("http://live-albashatv.site//stream?url="):
@@ -179,13 +208,13 @@ for payload in basha_payloads:
     except Exception as e:
         print(f"❌ خطأ أثناء جلب قنوات الباشا (Payload: {payload}): {e}")
 
-print(f"🎯 تم استخراج ({matched_count}) قناة من الباشا تيفي بنجاح.")
+print(f"🎯 تم استخراج ({matched_count}) قناة عربية وفرنسية من الباشا تيفي بنجاح.")
 
-# 3. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV)
+# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) - نفس كودك الأصلي تماماً
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
-# الإبقاء على جودة FHD فقط
+# الإبقاء على جودة FHD فقط (الفئة 90)
 targets = {
     "https://def.yacinelive.com/api/categories/90/channels": "FHD"
 }
@@ -210,47 +239,6 @@ for category_url, quality in targets.items():
             channel_name = channel.get('name')
             channel_id = channel.get('id')
             
-            channel_name_lower = channel_name.lower()
+            channel_name_lower = channel_name.lower() if channel_name else ""
             
             # التأكد من أن القناة هي إما MAX أو beIN Sport العادية
-            if not ("max" in channel_name_lower or "bein sport" in channel_name_lower):
-                continue
-                
-            print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج: {channel_name}...")
-            channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
-            detail_data = fetch_and_decrypt_yacine(session, channel_detail_url, yacine_headers)
-            
-            if detail_data and 'data' in detail_data:
-                streams = detail_data['data']
-                if streams:
-                    stream = streams[0]
-                    raw_url = stream.get('url')
-                    final_url = get_final_url(raw_url)
-                    
-                    final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}"
-                    display_name = f"{channel_name} {quality}"
-                    
-                    yacine_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
-                    yacine_content += f'{final_url_with_headers}\n'
-                    print(f"      ✔️ نجاح.")
-            time.sleep(0.5)
-
-# دمج المحتوى بالترتيب مع الحفاظ على قنواتك اليدوية
-final_m3u_content = f"#EXTM3U\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
-
-# 4. تحديث الـ Gist الخاص بك
-print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
-update_data = {
-    "files": {
-        filename: {
-            "content": final_m3u_content
-        }
-    }
-}
-
-update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
-
-if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة ونظيفة وجاهزة للعمل على الريسيفر.")
-else:
-    print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
