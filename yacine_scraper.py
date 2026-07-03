@@ -137,13 +137,13 @@ print("\n⚽ جاري تهيئة مجموعة قنوات LIVE المباشرة..
 live_separator = "# ==================== مجموعة قنوات LIVE ===================="
 live_url = "https://majed-koora.live/stream.php?channel=majed20267&file=stream.m3u8"
 live_content = (
-    f'#EXTINF:-1 tvg-logo="" group-title="LIVE", LIVE FHD\n'
+    f'#EXTINF:-1 tvg-logo="" group-title="LIVE", Match LIVE TV FHD\n'
     f'{live_url}\n'
     f'#EXTINF:-1 tvg-logo="" group-title="LIVE", Match LIVE TV HD\n'
     f'{live_url}\n'
 )
 
-# 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV) - فلترة دقيقة وصارمة للغاية
+# 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV)
 print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
 basha_separator = "# ==================== مجموعة قنوات AL BASHA TV ===================="
 basha_api_url = "https://albashatv.site/api.php"
@@ -175,7 +175,17 @@ for payload in basha_payloads:
                     
                 channel_name_lower = channel_name.lower()
                 
-                # فحص شروط الفلترة المحددة:
+                # تصفية صارمة جداً لحذف قنوات الـ VIP الدولية وقنوات الدول غير المرغوبة فوراً
+                exclude_tags = [
+                    "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us",
+                    "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:",
+                    " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ",
+                    "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]",
+                    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)"
+                ]
+                
+                if any(tag in channel_name_lower for tag in exclude_tags):
+                    continue
                 
                 # أ - قنوات beIN Sports و beIN Max (العربية والفرنسية)
                 is_bein = "bein" in channel_name_lower
