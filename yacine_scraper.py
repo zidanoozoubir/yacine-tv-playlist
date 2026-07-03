@@ -61,27 +61,6 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# دالة ذكية لتنظيف وتقشير روابط الباشا لتصبح متوافقة مع أجهزة الاستقبال
-def clean_and_extract_url(raw_url):
-    if not raw_url:
-        return raw_url
-        
-    # 1. إذا كان الرابط يمر عبر وسيط الباشا تيفي نقوم باستخراج الرابط الداخلي
-    if "?url=" in raw_url:
-        parsed_url = urllib.parse.urlparse(raw_url)
-        query_params = urllib.parse.parse_qs(parsed_url.query)
-        if 'url' in query_params:
-            raw_url = query_params['url'][0]
-            
-    # 2. تنظيف وتصحيح الشرطات المائلة المتكررة (مثل /// أو //)
-    if "://" in raw_url:
-        scheme, rest = raw_url.split("://", 1)
-        parts = [p for p in rest.split("/") if p]
-        normalized_rest = "/".join(parts)
-        return f"{scheme}://{normalized_rest}"
-        
-    return raw_url
-
 # دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
 def extract_static_channels(m3u_content):
     lines = m3u_content.splitlines()
@@ -152,7 +131,7 @@ except Exception as e:
 session = create_session()
 final_m3u_content = ""
 
-# 2. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV) المحددة وتنظيف روابطها للريسيفر
+# 2. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV)
 print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
 basha_separator = "# ==================== مجموعة قنوات AL BASHA TV ===================="
 basha_api_url = "https://albashatv.site/api.php"
@@ -162,16 +141,12 @@ basha_headers = {
     "User-Agent": "okhttp/3.9.1"
 }
 
-# بناءً على الصور، التطبيق يستخدم o6 و o2 لجلب الباقات المختلفة (بما فيها VIP)
+# جلب الباقات العادية وباقات الـ VIP
 basha_payloads = ["method=o6&event=view", "method=o2&event=view"]
 basha_targets = ["bein max", "bein sport", "osn", "netflix", "bein media", "hbo", "amazon prime", "amazon", "vip"]
 
-# هيدرات إضافية لروابط الباشا لتخطي الحظر على الكمبيوتر والريسيفر (مأخوذة من صورك)
-basha_player_ua = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-basha_player_referer = "https://albashatv.site/"
-
 basha_content = ""
-seen_basha_urls = set() # لمنع تكرار القنوات إذا كانت موجودة في o6 و o2 معاً
+seen_basha_urls = set() 
 matched_count = 0
 
 for payload in basha_payloads:
@@ -189,20 +164,17 @@ for payload in basha_payloads:
                     
                 channel_name_lower = channel_name.lower()
                 if any(target in channel_name_lower for target in basha_targets):
-                    cleaned_url = clean_and_extract_url(raw_url)
                     
-                    # إضافة الهيدرات للرابط ليعمل على الريسيفر والكمبيوتر
-                    final_basha_url = f"{cleaned_url}|User-Agent={basha_player_ua}&Referer={basha_player_referer}"
-                    
+                    # وضع الرابط كما هو تماماً ليعمل عبر وسيط الباشا (Proxy)
                     basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
-                    basha_content += f'{final_basha_url}\n'
+                    basha_content += f'{raw_url}\n'
                     
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
     except Exception as e:
         print(f"❌ خطأ أثناء جلب قنوات الباشا (Payload: {payload}): {e}")
 
-print(f"🎯 تم استخراج وتصحيح ({matched_count}) قناة من الباشا تيفي لتصبح متوافقة مع الريسيفر.")
+print(f"🎯 تم استخراج ({matched_count}) قناة من الباشا تيفي بنجاح.")
 
 # 3. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV)
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
