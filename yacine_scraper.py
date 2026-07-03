@@ -163,8 +163,8 @@ basha_headers = {
 }
 basha_payload = "method=o6&event=view"
 
-# تم إضافة "vip" لجلب باقة VIP للقنوات العربية
-basha_targets = ["bein max", "bein sport", "osn", "netflix", "bein media", "hbo", "amazon prime", "amazon", "vip"]
+# تحديد الكلمات المفتاحية المطلوبة فقط
+basha_targets = ["bein max", "bein sport", "osn", "netflix", "bein media", "hbo", "amazon prime", "amazon"]
 
 basha_content = ""
 try:
@@ -197,10 +197,9 @@ except Exception as e:
 # 3. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV)
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
-
-# تم الإبقاء على جودة FHD فقط (الأعلى جودة)
 targets = {
-    "https://def.yacinelive.com/api/categories/90/channels": "FHD"
+    "https://def.yacinelive.com/api/categories/90/channels": "FHD",
+    "https://def.yacinelive.com/api/categories/89/channels": "HD"
 }
 yacine_headers = {
     "Accept": "application/json",
@@ -223,10 +222,6 @@ for category_url, quality in targets.items():
             channel_name = channel.get('name')
             channel_id = channel.get('id')
             
-            # التأكد من أن القناة هي قناة MAX فقط
-            if "max" not in channel_name.lower():
-                continue
-                
             print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج: {channel_name}...")
             channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
             detail_data = fetch_and_decrypt_yacine(session, channel_detail_url, yacine_headers)
