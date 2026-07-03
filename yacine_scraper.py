@@ -88,7 +88,7 @@ def extract_static_channels(m3u_content):
     static_lines = []
     current_channel_block = []
     
-    # تم إضافة كلمات فلترة قنوات ماجد سبورت هنا لمنع اختلاطها بالقنوات الثابتة مستقبلاً
+    # تم إدراج كلمات الاستبعاد الخاصة بماجد سبورت لحماية القنوات اليدوية من التداخل والمسح
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", 'group-title="live"'
@@ -164,8 +164,8 @@ basha_headers = {
 }
 basha_payload = "method=o6&event=view"
 
-# تحديد الكلمات المفتاحية المطلوبة فقط
-basha_targets = ["bein max", "bein sport", "osn", "netflix", "bein media", "hbo", "amazon prime", "amazon"]
+# إضافة "vip" للبحث عن قنوات الأفلام والمسلسلات داخل تطبيق الباشا
+basha_targets = ["bein max", "bein sport", "osn", "netflix", "bein media", "hbo", "amazon prime", "amazon", "vip"]
 
 basha_content = ""
 try:
@@ -184,8 +184,11 @@ try:
                 # استخراج الرابط المباشر وتنظيفه للجهاز
                 cleaned_url = clean_and_extract_url(raw_url)
                 
+                # ربط هيدر التطبيق لتشغيل قنوات الباشا خارج التطبيق بشكل صحيح
+                cleaned_url_with_headers = f"{cleaned_url}|User-Agent=okhttp/3.9.1"
+                
                 basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
-                basha_content += f'{cleaned_url}\n'
+                basha_content += f'{cleaned_url_with_headers}\n'
                 matched_count += 1
                 
         print(f"🎯 تم استخراج وتصحيح ({matched_count}) قناة لتصبح متوافقة مع الريسيفر.")
@@ -195,7 +198,7 @@ except Exception as e:
     print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
 
 
-# 3. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) بجميع الجودات المتاحة
+# 3. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) بجميع جوداتها المتاحة
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 targets = {
@@ -230,7 +233,7 @@ for category_url, quality in targets.items():
             if detail_data and 'data' in detail_data:
                 streams = detail_data['data']
                 if streams:
-                    # تكرار العملية للحصول على كافة جودات البث المتوفرة للقناة بدلاً من جودة واحدة فقط
+                    # تكرار جلب كل الجودات المتاحة للقناة لعدم خسارة الجودات المرتفعة
                     for stream in streams:
                         raw_url = stream.get('url')
                         stream_quality = stream.get('name', quality)
@@ -260,7 +263,7 @@ try:
         config_data = majed_response.json()
         channels_found = []
         
-        # استخراج القنوات بشكل مرن من ملف config.json
+        # استخراج المعرفات من config.json بشكل مرن وحركي
         if isinstance(config_data, list):
             for item in config_data:
                 if isinstance(item, dict):
