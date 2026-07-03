@@ -175,7 +175,7 @@ for payload in basha_payloads:
                     
                 channel_name_lower = channel_name.lower()
                 
-                # تصفية صارمة جداً لحذف قنوات الـ VIP وقنوات الدول غير المرغوبة فوراً (تمت إضافة الباقات الجديدة المستبعدة)
+                # تصفية صارمة جداً لحذف قنوات الـ VIP وقنوات الدول غير المرغوبة فوراً
                 exclude_tags = [
                     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
                     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "hu", "ro", "dk", "usa"
@@ -190,9 +190,17 @@ for payload in basha_payloads:
                 # أ - قنوات beIN Sports و beIN Max (العربية والفرنسية)
                 is_bein = "bein" in channel_name_lower
                 
-                # ب - القنوات الترفيهية العربية المحددة (OSN, Netflix, HBO, Amazon, VIP, Shahid)
+                # ب - القنوات الترفيهية العربية المحددة (OSN, Netflix, HBO, Amazon, VIP, Shahid, MBC, الكأس، الفجر، الوان، ثمانية، STC)
                 is_arabic_premium = False
-                premium_keywords = ["osn", "netflix", "hbo", "amazon", "vip", "shahid"]
+                premium_keywords = [
+                    "osn", "netflix", "hbo", "amazon", "vip", "shahid", 
+                    "box office", "boxoffice", "box-office", "بوكس", 
+                    "al fajer", "fajer", "الفجر",
+                    "stc", "thamanya", "ثمانية",
+                    "alkass", "الكأس", "الكاس",
+                    "alwan", "ألوان", "الوان",
+                    "mbc", "ام بي سي"
+                ]
                 if any(kw in channel_name_lower for kw in premium_keywords):
                     has_arabic_chars = any('\u0600' <= char <= '\u06FF' for char in channel_name)
                     has_foreign_tag = any(tag in channel_name_lower for tag in ["fr:", "fr ", "(fr)", "[fr]", " en ", " es ", " de "])
@@ -246,7 +254,7 @@ yacine_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
-ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/139.0.0.0 Safari/537.36"
 referer_value = "http://re.ycn-redirect.com/"
 
 yacine_content = ""
