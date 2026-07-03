@@ -67,7 +67,7 @@ def extract_static_channels(m3u_content):
     static_lines = []
     current_channel_block = []
     
-    # تم استبعاد السيرفر الجديد وموقع ماجد سبورت لمنع التكرار في القسم الثابت
+    # تم إضافة آي بي سيرفر الجنرال لمنع التكرار في القسم الثابت
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "195.182.16.45"
@@ -102,22 +102,6 @@ def extract_static_channels(m3u_content):
             
     return "\n".join(static_lines).strip()
 
-# دالة مخصصة لتصفية القنوات العربية والفرنسية فقط للباشا تيفي
-def is_arabic_or_french(name):
-    name_lower = name.lower()
-    # 1. فحص وجود أي حرف عربي في اسم القناة
-    if any('\u0600' <= char <= '\u06FF' for char in name):
-        return True
-    # 2. الكلمات الدلالية للقنوات العربية الرياضية والترفيهية المكتوبة بالإنجليزية
-    arabic_keywords = ["bein", "osn", "mbc", "ssc", "shahid", "art", "rotana", "al jazeera", "vip", "basha", "ar:", "arabic"]
-    if any(kw in name_lower for kw in arabic_keywords):
-        return True
-    # 3. الكلمات الدلالية للقنوات الفرنسية الشهيرة
-    french_keywords = ["fr:", "fr ", "(fr)", "[fr]", "france", "canal+", "canal plus", "rmc", "tf1", "m6", "ocs", "ciné+", "cine+"]
-    if any(kw in name_lower for kw in french_keywords):
-        return True
-    return False
-
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
 print("📂 جاري جلب محتوى الـ Gist الحالي...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
@@ -148,57 +132,26 @@ except Exception as e:
 session = create_session()
 final_m3u_content = ""
 
-# 2. الاتصال بالسيرفر الجديد وجلب وتصفية قنوات البث المباشر (Match LIVE TV) تلقائياً بالترتيب الأول
-print("\n⚽ جاري جلب وتصفية قنوات السيرفر الجديد (Match LIVE TV)...")
-live_separator = "# ==================== مجموعة قنوات Match LIVE TV ===================="
-xtream_url = "http://195.182.16.45:8080/get.php?username=omar777&password=01103978590&output=m3u_plus"
-xtream_headers = {
-    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
-}
+# 2. تهيئة وتجهيز باقة قنوات LIVE المباشرة الجديدة بالترتيب الأول
+print("\n⚽ جاري تهيئة مجموعة قنوات LIVE المباشرة...")
+live_separator = "# ==================== مجموعة قنوات LIVE ===================="
+live_url = "https://majed-koora.live/stream.php?channel=majed20267&file=stream.m3u8"
+live_content = (
+    f'#EXTINF:-1 tvg-logo="" group-title="LIVE", Match LIVE TV FHD\n'
+    f'{live_url}\n'
+    f'#EXTINF:-1 tvg-logo="" group-title="LIVE", Match LIVE TV HD\n'
+    f'{live_url}\n'
+)
 
-live_content = ""
-xtream_count = 0
-
-try:
-    response = session.get(xtream_url, headers=xtream_headers, timeout=25)
-    if response.status_code == 200:
-        lines = response.text.splitlines()
-        current_inf = ""
-        
-        for line in lines:
-            line_stripped = line.strip()
-            if not line_stripped:
-                continue
-            if line_stripped.startswith("#EXTINF"):
-                current_inf = line_stripped
-            elif line_stripped.startswith("http"):
-                if current_inf:
-                    channel_name = ""
-                    if "," in current_inf:
-                        channel_name = current_inf.split(",", 1)[1].strip()
-                    
-                    channel_name_lower = channel_name.lower()
-                    
-                    # التصفية المطلوبة بدقة: بي إن سبورت العربية والفرنسية، قنوات ألوان، قنوات الفجر
-                    is_bein = "bein" in channel_name_lower
-                    is_alwan = any(kw in channel_name_lower for kw in ["alwan", "الوان", "ألوان"])
-                    is_fajer = any(kw in channel_name_lower for kw in ["fajer", "al fajer", "الفجر"])
-                    
-                    if is_bein or is_alwan or is_fajer:
-                        new_inf = f'#EXTINF:-1 tvg-logo="" group-title="Match LIVE TV", {channel_name}'
-                        # إضافة هيدر هاتف الآيفون تلقائياً في نهاية رابط الفيديو لضمان تشغيله على الريسيفر بدون حظر
-                        final_stream_url = f"{line_stripped}|User-Agent=Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
-                        
-                        live_content += f"{new_inf}\n"
-                        live_content += f"{final_stream_url}\n"
-                        xtream_count += 1
-                    current_inf = ""
-    else:
-        print(f"❌ فشل جلب قنوات السيرفر الجديد. كود الحالة: {response.status_code}")
-except Exception as e:
-    print(f"❌ خطأ أثناء الاتصال بالسيرفر الجديد: {e}")
-
-print(f"🎯 تم استخراج وتصفية ({xtream_count}) قناة من السيرفر الجديد بنجاح.")
+# 2.5 إضافة باقة قنوات General TV الجديدة بناءً على طلبك
+print("\n📺 جاري تهيئة مجموعة قنوات General TV...")
+general_separator = "# ==================== مجموعة قنوات GENERAL TV ===================="
+general_url = "http://195.182.16.45:8080/live/omar777/01103978590/460861.ts"
+general_ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15"
+general_content = (
+    f'#EXTINF:-1 tvg-logo="" group-title="General TV", General TV FHD\n'
+    f'{general_url}|User-Agent={general_ua}\n'
+)
 
 # 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV)
 print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
@@ -212,6 +165,7 @@ basha_headers = {
 
 # جلب الباقات العادية وباقات الـ VIP
 basha_payloads = ["method=o6&event=view", "method=o2&event=view"]
+basha_targets = ["bein max", "bein sport", "osn", "netflix", "bein media", "hbo", "amazon prime", "amazon", "vip"]
 
 basha_content = ""
 seen_basha_urls = set() 
@@ -231,56 +185,9 @@ for payload in basha_payloads:
                     continue
                     
                 channel_name_lower = channel_name.lower()
-                
-                # تصفية صارمة جداً لحذف قنوات الـ VIP وقنوات الدول غير المرغوبة فوراً
-                exclude_tags = [
-                    "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
-                    "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "hu", "ro", "dk", "usa"
-                    " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ",
-                    "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]",
-                    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
-                ]
-                
-                if any(tag in channel_name_lower for tag in exclude_tags):
-                    continue
-                
-                # أ - قنوات beIN Sports و beIN Max (العربية والفرنسية)
-                is_bein = "bein" in channel_name_lower
-                
-                # ب - القنوات الترفيهية العربية المحددة
-                is_arabic_premium = False
-                premium_keywords = [
-                    "osn", "netflix", "hbo", "amazon", "vip", "shahid", 
-                    "box office", "boxoffice", "box-office", "بوكس", 
-                    "al fajer", "fajer", "الفجر",
-                    "stc", "thamanya", "ثمانية",
-                    "alkass", "الكأس", "الكاس",
-                    "alwan", "ألوان", "الوان",
-                    "mbc", "ام بي سي"
-                ]
-                if any(kw in channel_name_lower for kw in premium_keywords):
-                    has_arabic_chars = any('\u0600' <= char <= '\u06FF' for char in channel_name)
-                    has_foreign_tag = any(tag in channel_name_lower for tag in ["fr:", "fr ", "(fr)", "[fr]", " en ", " es ", " de "])
-                    if has_arabic_chars or not has_foreign_tag:
-                        is_arabic_premium = True
-                
-                # ج - القنوات الفرنسية المحددة (الوثائقية، الوطنية العامة، الأفلام، الرياضة، الأطفال)
-                is_french_target = False
-                french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
-                if any(tag in channel_name_lower for tag in french_tags) or "canal+" in channel_name_lower:
-                    french_keywords = [
-                        "tf1", "m6", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
-                        "ocs", "cine", "ciné", "gulli", "tiji", "cartoon", "disney", 
-                        "nickelodeon", "nat geo", "national geo", "discovery", "ushuaia", 
-                        "histoire", "science", "action", "w9", "tmc", "tfx"
-                    ]
-                    if any(kw in channel_name_lower for kw in french_keywords):
-                        is_french_target = True
-                
-                # تمرير القناة فقط إذا طابقت أحد الشروط الثلاثة المحددة
-                if is_bein or is_arabic_premium or is_french_target:
+                if any(target in channel_name_lower for target in basha_targets):
                     
-                    # إضافة بروكسي الباشا تيفي للرابط لكي يعمل بشكل صحيح (قاعدة صارمة رقم 1)
+                    # إضافة بروكسي الباشا تيفي للرابط لكي يعمل بشكل صحيح
                     if not raw_url.startswith("http://live-albashatv.site//stream?url="):
                         final_basha_url = f"http://live-albashatv.site//stream?url={raw_url}"
                     else:
@@ -294,13 +201,13 @@ for payload in basha_payloads:
     except Exception as e:
         print(f"❌ خطأ أثناء جلب قنوات الباشا (Payload: {payload}): {e}")
 
-print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة عربية وفرنسية ترفيهية ورياضية من الباشا بنجاح.")
+print(f"🎯 تم استخراج ({matched_count}) قناة من الباشا تيفي بنجاح.")
 
-# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) - قاعدة صارمة رقم 2
+# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV)
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
-# الإبقاء على جودة FHD فقط (الفئة 90)
+# الإبقاء على جودة FHD فقط
 targets = {
     "https://def.yacinelive.com/api/categories/90/channels": "FHD"
 }
@@ -311,7 +218,7 @@ yacine_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
-ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/139.0.0.0 Safari/537.36"
 referer_value = "http://re.ycn-redirect.com/"
 
 yacine_content = ""
@@ -350,8 +257,8 @@ for category_url, quality in targets.items():
                     print(f"      ✔️ نجاح.")
             time.sleep(0.5)
 
-# دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية (قاعدة صارمة رقم 3)
-final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
+# دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
+final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{general_separator}\n{general_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
 
 # 5. تحديث الـ Gist الخاص بك
 print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
