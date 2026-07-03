@@ -161,45 +161,56 @@ basha_headers = {
     "Connection": "Keep-Alive",
     "User-Agent": "okhttp/3.9.1"
 }
-basha_payload = "method=o6&event=view"
 
-# تحديد الكلمات المفتاحية المطلوبة فقط
-basha_targets = ["bein max", "bein sport", "osn", "netflix", "bein media", "hbo", "amazon prime", "amazon"]
+# بناءً على الصور، التطبيق يستخدم o6 و o2 لجلب الباقات المختلفة (بما فيها VIP)
+basha_payloads = ["method=o6&event=view", "method=o2&event=view"]
+basha_targets = ["bein max", "bein sport", "osn", "netflix", "bein media", "hbo", "amazon prime", "amazon", "vip"]
+
+# هيدرات إضافية لروابط الباشا لتخطي الحظر على الكمبيوتر والريسيفر (مأخوذة من صورك)
+basha_player_ua = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+basha_player_referer = "https://albashatv.site/"
 
 basha_content = ""
-try:
-    basha_response = session.post(basha_api_url, headers=basha_headers, data=basha_payload, timeout=15)
-    if basha_response.status_code == 200:
-        basha_channels = basha_response.json()
-        print(f"✅ تم الاتصال بسيرفر الباشا بنجاح. إجمالي القنوات: ({len(basha_channels)}) قناة.")
-        
-        matched_count = 0
-        for channel in basha_channels:
-            channel_name = channel.get('name', '')
-            raw_url = channel.get('url', '')
-            
-            channel_name_lower = channel_name.lower()
-            if any(target in channel_name_lower for target in basha_targets):
-                # استخراج الرابط المباشر وتنظيفه للجهاز
-                cleaned_url = clean_and_extract_url(raw_url)
-                
-                basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
-                basha_content += f'{cleaned_url}\n'
-                matched_count += 1
-                
-        print(f"🎯 تم استخراج وتصحيح ({matched_count}) قناة لتصبح متوافقة مع الريسيفر.")
-    else:
-        print(f"❌ فشل جلب قنوات الباقة: AL BASHA TV")
-except Exception as e:
-    print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
+seen_basha_urls = set() # لمنع تكرار القنوات إذا كانت موجودة في o6 و o2 معاً
+matched_count = 0
 
+for payload in basha_payloads:
+    try:
+        basha_response = session.post(basha_api_url, headers=basha_headers, data=payload, timeout=15)
+        if basha_response.status_code == 200:
+            basha_channels = basha_response.json()
+            
+            for channel in basha_channels:
+                channel_name = channel.get('name', '')
+                raw_url = channel.get('url', '')
+                
+                if not raw_url or raw_url in seen_basha_urls:
+                    continue
+                    
+                channel_name_lower = channel_name.lower()
+                if any(target in channel_name_lower for target in basha_targets):
+                    cleaned_url = clean_and_extract_url(raw_url)
+                    
+                    # إضافة الهيدرات للرابط ليعمل على الريسيفر والكمبيوتر
+                    final_basha_url = f"{cleaned_url}|User-Agent={basha_player_ua}&Referer={basha_player_referer}"
+                    
+                    basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
+                    basha_content += f'{final_basha_url}\n'
+                    
+                    seen_basha_urls.add(raw_url)
+                    matched_count += 1
+    except Exception as e:
+        print(f"❌ خطأ أثناء جلب قنوات الباشا (Payload: {payload}): {e}")
+
+print(f"🎯 تم استخراج وتصحيح ({matched_count}) قناة من الباشا تيفي لتصبح متوافقة مع الريسيفر.")
 
 # 3. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV)
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
+
+# الإبقاء على جودة FHD فقط
 targets = {
-    "https://def.yacinelive.com/api/categories/90/channels": "FHD",
-    "https://def.yacinelive.com/api/categories/89/channels": "HD"
+    "https://def.yacinelive.com/api/categories/90/channels": "FHD"
 }
 yacine_headers = {
     "Accept": "application/json",
@@ -222,6 +233,12 @@ for category_url, quality in targets.items():
             channel_name = channel.get('name')
             channel_id = channel.get('id')
             
+            channel_name_lower = channel_name.lower()
+            
+            # التأكد من أن القناة هي إما MAX أو beIN Sport العادية
+            if not ("max" in channel_name_lower or "bein sport" in channel_name_lower):
+                continue
+                
             print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج: {channel_name}...")
             channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
             detail_data = fetch_and_decrypt_yacine(session, channel_detail_url, yacine_headers)
