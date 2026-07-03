@@ -67,10 +67,10 @@ def extract_static_channels(m3u_content):
     static_lines = []
     current_channel_block = []
     
-    # تم استبعاد قنوات البث المباشر المحددة لمنع تكرارها في القسم الثابت
+    # تم استبعاد السيرفر الجديد وموقع ماجد سبورت لمنع التكرار في القسم الثابت
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
-        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live"
+        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "195.182.16.45"
     ]
 
     for line in lines:
@@ -102,6 +102,22 @@ def extract_static_channels(m3u_content):
             
     return "\n".join(static_lines).strip()
 
+# دالة مخصصة لتصفية القنوات العربية والفرنسية فقط للباشا تيفي
+def is_arabic_or_french(name):
+    name_lower = name.lower()
+    # 1. فحص وجود أي حرف عربي في اسم القناة
+    if any('\u0600' <= char <= '\u06FF' for char in name):
+        return True
+    # 2. الكلمات الدلالية للقنوات العربية الرياضية والترفيهية المكتوبة بالإنجليزية
+    arabic_keywords = ["bein", "osn", "mbc", "ssc", "shahid", "art", "rotana", "al jazeera", "vip", "basha", "ar:", "arabic"]
+    if any(kw in name_lower for kw in arabic_keywords):
+        return True
+    # 3. الكلمات الدلالية للقنوات الفرنسية الشهيرة
+    french_keywords = ["fr:", "fr ", "(fr)", "[fr]", "france", "canal+", "canal plus", "rmc", "tf1", "m6", "ocs", "ciné+", "cine+"]
+    if any(kw in name_lower for kw in french_keywords):
+        return True
+    return False
+
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
 print("📂 جاري جلب محتوى الـ Gist الحالي...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
@@ -132,16 +148,57 @@ except Exception as e:
 session = create_session()
 final_m3u_content = ""
 
-# 2. تهيئة وتجهيز باقة قنوات LIVE المباشرة الجديدة بالترتيب الأول
-print("\n⚽ جاري تهيئة مجموعة قنوات LIVE المباشرة...")
-live_separator = "# ==================== مجموعة قنوات LIVE ===================="
-live_url = "https://majed-koora.live/stream.php?channel=majed20267&file=stream.m3u8"
-live_content = (
-    f'#EXTINF:-1 tvg-logo="" group-title="LIVE", Match LIVE TV FHD\n'
-    f'{live_url}\n'
-    f'#EXTINF:-1 tvg-logo="" group-title="LIVE", Match LIVE TV HD\n'
-    f'{live_url}\n'
-)
+# 2. الاتصال بالسيرفر الجديد وجلب وتصفية قنوات البث المباشر (Match LIVE TV) تلقائياً بالترتيب الأول
+print("\n⚽ جاري جلب وتصفية قنوات السيرفر الجديد (Match LIVE TV)...")
+live_separator = "# ==================== مجموعة قنوات Match LIVE TV ===================="
+xtream_url = "http://195.182.16.45:8080/get.php?username=omar777&password=01103978590&output=m3u_plus"
+xtream_headers = {
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+}
+
+live_content = ""
+xtream_count = 0
+
+try:
+    response = session.get(xtream_url, headers=xtream_headers, timeout=25)
+    if response.status_code == 200:
+        lines = response.text.splitlines()
+        current_inf = ""
+        
+        for line in lines:
+            line_stripped = line.strip()
+            if not line_stripped:
+                continue
+            if line_stripped.startswith("#EXTINF"):
+                current_inf = line_stripped
+            elif line_stripped.startswith("http"):
+                if current_inf:
+                    channel_name = ""
+                    if "," in current_inf:
+                        channel_name = current_inf.split(",", 1)[1].strip()
+                    
+                    channel_name_lower = channel_name.lower()
+                    
+                    # التصفية المطلوبة بدقة: بي إن سبورت العربية والفرنسية، قنوات ألوان، قنوات الفجر
+                    is_bein = "bein" in channel_name_lower
+                    is_alwan = any(kw in channel_name_lower for kw in ["alwan", "الوان", "ألوان"])
+                    is_fajer = any(kw in channel_name_lower for kw in ["fajer", "al fajer", "الفجر"])
+                    
+                    if is_bein or is_alwan or is_fajer:
+                        new_inf = f'#EXTINF:-1 tvg-logo="" group-title="Match LIVE TV", {channel_name}'
+                        # إضافة هيدر هاتف الآيفون تلقائياً في نهاية رابط الفيديو لضمان تشغيله على الريسيفر بدون حظر
+                        final_stream_url = f"{line_stripped}|User-Agent=Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+                        
+                        live_content += f"{new_inf}\n"
+                        live_content += f"{final_stream_url}\n"
+                        xtream_count += 1
+                    current_inf = ""
+    else:
+        print(f"❌ فشل جلب قنوات السيرفر الجديد. كود الحالة: {response.status_code}")
+except Exception as e:
+    print(f"❌ خطأ أثناء الاتصال بالسيرفر الجديد: {e}")
+
+print(f"🎯 تم استخراج وتصفية ({xtream_count}) قناة من السيرفر الجديد بنجاح.")
 
 # 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV)
 print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
@@ -190,7 +247,7 @@ for payload in basha_payloads:
                 # أ - قنوات beIN Sports و beIN Max (العربية والفرنسية)
                 is_bein = "bein" in channel_name_lower
                 
-                # ب - القنوات الترفيهية العربية المحددة (OSN, Netflix, HBO, Amazon, VIP, Shahid, MBC, الكأس، الفجر، الوان، ثمانية، STC)
+                # ب - القنوات الترفيهية العربية المحددة
                 is_arabic_premium = False
                 premium_keywords = [
                     "osn", "netflix", "hbo", "amazon", "vip", "shahid", 
@@ -254,7 +311,7 @@ yacine_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
-ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/139.0.0.0 Safari/537.36"
+ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 referer_value = "http://re.ycn-redirect.com/"
 
 yacine_content = ""
