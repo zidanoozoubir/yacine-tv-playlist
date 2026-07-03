@@ -165,9 +165,14 @@ for payload in basha_payloads:
                 channel_name_lower = channel_name.lower()
                 if any(target in channel_name_lower for target in basha_targets):
                     
-                    # وضع الرابط كما هو تماماً ليعمل عبر وسيط الباشا (Proxy)
+                    # إضافة بروكسي الباشا تيفي للرابط لكي يعمل بشكل صحيح
+                    if not raw_url.startswith("http://live-albashatv.site//stream?url="):
+                        final_basha_url = f"http://live-albashatv.site//stream?url={raw_url}"
+                    else:
+                        final_basha_url = raw_url
+                    
                     basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
-                    basha_content += f'{raw_url}\n'
+                    basha_content += f'{final_basha_url}\n'
                     
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
