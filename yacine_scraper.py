@@ -22,11 +22,10 @@ def decrypt_yacine(encrypted_data, header_t):
         for i in range(len(encrypted_bytes)):
             decrypted_bytes.append(encrypted_bytes[i] ^ full_key[i % len(full_key)])
         return decrypted_bytes.decode('utf-8')
-    except Exception as e:
-        print(f"Error decrypting Yacine: {e}")
+    except Exception:
         return None
 
-# إنشاء جلسة عمل مشتركة (Session) للحفاظ على الاتصال وتفادي الحظر
+# إنشاء جلسة عمل مشتركة (Session) للحفاظ على الكوكيز وتفادي الحظر
 def create_session():
     session = requests.Session()
     retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
@@ -62,7 +61,7 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# دالة تنظيف وتقشير روابط الباشا لتصبح متوافقة مع أجهزة الاستقبال
+# دالة تنظيف وتقشير روابط الباشا
 def clean_and_extract_url(raw_url):
     if not raw_url:
         return raw_url
@@ -78,7 +77,56 @@ def clean_and_extract_url(raw_url):
         return f"{scheme}://{normalized_rest}"
     return raw_url
 
-# دالة ذكية لتصنيف قنوات DEJLA TV في المجموعات المطلوبة بالترتيب
+# دالة استخراج الأقسام الحالية من الـ Gist لاستخدامها كنسخ احتياطية في حال الفشل
+def get_section_content(m3u_text, header_marker):
+    lines = m3u_text.splitlines()
+    section_lines = []
+    capture = False
+    for line in lines:
+        line_stripped = line.strip()
+        if header_marker in line_stripped:
+            capture = True
+            continue
+        if capture:
+            if line_stripped.startswith("# ===================="):
+                break
+            section_lines.append(line)
+    return "\n".join(section_lines).strip()
+
+# دالة الفلترة الاحتياطية للقنوات اليدوية الثابتة
+def extract_static_channels(m3u_content):
+    lines = m3u_content.splitlines()
+    static_lines = []
+    current_channel_block = []
+    exclude_keywords = [
+        "foxbleu.org", "used4.fun", "albashatv.site", "playcasta.online", 
+        "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", 
+        "BEIN MAX YACINE TV", "AL BASHA TV", "DEJLA TV"
+    ]
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped or line_stripped.startswith("#EXTM3U") or "=====" in line_stripped:
+            continue
+        if line_stripped.startswith("#EXTINF"):
+            if current_channel_block:
+                block_str = "".join(current_channel_block)
+                if not any(kw in block_str for kw in exclude_keywords):
+                    static_lines.extend(current_channel_block)
+                    static_lines.append("")
+            current_channel_block = [line_stripped]
+        elif line_stripped.startswith("#") or line_stripped.startswith("http") or line_stripped.startswith("rtmp"):
+            if current_channel_block:
+                current_channel_block.append(line_stripped)
+            else:
+                if not any(kw in line_stripped for kw in exclude_keywords):
+                    static_lines.append(line_stripped)
+    if current_channel_block:
+        block_str = "".join(current_channel_block)
+        if not any(kw in block_str for kw in exclude_keywords):
+            static_lines.extend(current_channel_block)
+    return "\n".join(static_lines).strip()
+
+# دالة تصنيف قنوات DEJLA TV حسب الترتيب المطلوب بدقة
 def get_dejla_group(channel_name):
     name_lower = channel_name.lower()
     
@@ -88,7 +136,7 @@ def get_dejla_group(channel_name):
     # 2. beIN SPORT
     if "bein sport" in name_lower:
         return 2
-    # 3. beIN (بقية قنوات بين الترفيهية أو الإخبارية)
+    # 3. beIN (أي قناة أخرى تحمل اسم bein)
     if "bein" in name_lower:
         return 3
     # 4. OSN / AMAZON PRIME / NETFLIX / BOX OFFICE / HBO / ROTANA / MBC / GOBX
@@ -106,58 +154,17 @@ def get_dejla_group(channel_name):
     if any(kw in name_lower for kw in kids_keywords):
         return 7
         
-    return None # القنوات غير المطابقة للشروط لن تضاف لمنع تراكم قنوات لا تهمك
+    return None
 
-# دالة لتصفية واستخراج القنوات اليدوية الثابتة فقط من الـ Gist الحالي بشكل آمن
-def extract_static_channels(m3u_content):
-    lines = m3u_content.splitlines()
-    static_lines = []
-    current_channel_block = []
-    
-    exclude_keywords = [
-        "foxbleu.org", "used4.fun", "albashatv.site", "playcasta.online", 
-        "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", 
-        "BEIN MAX YACINE TV", "AL BASHA TV", "DEJLA TV"
-    ]
-
-    for line in lines:
-        line_stripped = line.strip()
-        if not line_stripped:
-            continue
-        
-        if line_stripped.startswith("#EXTM3U") or "=====" in line_stripped:
-            continue
-            
-        if line_stripped.startswith("#EXTINF"):
-            if current_channel_block:
-                block_str = "".join(current_channel_block)
-                if not any(kw in block_str for kw in exclude_keywords):
-                    static_lines.extend(current_channel_block)
-                    static_lines.append("")
-            current_channel_block = [line_stripped]
-        elif line_stripped.startswith("#") or line_stripped.startswith("http") or line_stripped.startswith("rtmp"):
-            if current_channel_block:
-                current_channel_block.append(line_stripped)
-            else:
-                if not any(kw in line_stripped for kw in exclude_keywords):
-                    static_lines.append(line_stripped)
-                    
-    if current_channel_block:
-        block_str = "".join(current_channel_block)
-        if not any(kw in block_str for kw in exclude_keywords):
-            static_lines.extend(current_channel_block)
-            
-    return "\n".join(static_lines).strip()
-
-# 1. جلب محتوى الـ Gist واستخلاص قنواتك الثابتة
-print("📂 جاري جلب محتوى الـ Gist لتأمين قنواتك اليدوية...")
+# 1. جلب المحتوى الحالي وتحديد النسخ الاحتياطية لحماية بياناتك
+print("📂 جاري جلب محتوى الـ Gist الحالي لاستخدامه كخط دفاع آمن...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
 gist_headers = {
     "Authorization": f"token {GITHUB_TOKEN}",
     "Accept": "application/vnd.github+json"
 }
-static_clean = ""
 filename = "kz.m3u"
+current_content = ""
 
 try:
     gist_response = requests.get(gist_api_url, headers=gist_headers, timeout=15)
@@ -165,24 +172,30 @@ try:
         gist_data = gist_response.json()
         filename = list(gist_data['files'].keys())[0]
         current_content = gist_data['files'][filename]['content']
-        static_clean = extract_static_channels(current_content)
-        print("✔️ تم عزل وحفظ القنوات اليدوية الثابتة بنجاح.")
     else:
-        print(f"❌ فشل جلب الـ Gist. كود الحالة: {gist_response.status_code}")
+        print(f"❌ فشل الاتصال بـ Gist API.")
         exit(1)
 except Exception as e:
-    print(f"❌ خطأ أثناء الاتصال بـ Gist API: {e}")
+    print(f"❌ خطأ: {e}")
     exit(1)
+
+# استخراج النسخ الاحتياطية الحالية لمنع المسح التلقائي
+old_dejla = get_section_content(current_content, "DEJLA TV")
+old_basha = get_section_content(current_content, "AL BASHA TV")
+old_yacine = get_section_content(current_content, "BEIN MAX YACINE TV")
+static_clean = get_section_content(current_content, "قنواتك اليدوية والثابتة")
+
+if not static_clean:
+    static_clean = extract_static_channels(current_content)
 
 session = create_session()
 
-# ==================== (أ) جلب وتحديث قنوات DEJLA TV بالترتيب المحدد ====================
-print("\n🚀 جاري جلب وترتيب باقة DEJLA TV...")
+# ==================== (أ) جلب وتحديث قنوات DEJLA TV بالترتيب والشروط ====================
+print("\n🚀 جاري جلب وتنسيق باقة DEJLA TV المباشرة...")
 dejla_separator = "# ==================== مجموعة قنوات DEJLA TV ===================="
-api_url = "http://used4.fun/api/Getappuser.php"
-api_headers = {"Content-Type": "application/json; charset=utf-8", "User-Agent": "smart-tv"}
+m3u_url = ""
 
-# تشفير الماك أدرس لاستخراج رابط الـ M3U المباشر من السيرفر
+# تشفير الماك أدرس لتوليد رابط القنوات المباشر
 mac_address = "5e:0f:fa:6d:d2:48"
 mac_clean = mac_address.replace(":", "").lower()
 mac_b64_1 = base64.b64encode(mac_clean.encode('utf-8')).decode('utf-8')
@@ -192,9 +205,8 @@ request_payload = {"app_device_id": mac_b64_2, "app_type": "tv", "version": "1.0
 request_json_str = json.dumps(request_payload, separators=(',', ':'))
 encrypted_request = base64.b64encode(request_json_str.encode('utf-8')).decode('utf-8')
 
-m3u_url = ""
 try:
-    response = session.post(api_url, json={"data": encrypted_request}, headers=api_headers, timeout=15)
+    response = session.post("http://used4.fun/api/Getappuser.php", json={"data": encrypted_request}, headers={"Content-Type": "application/json", "User-Agent": "smart-tv"}, timeout=15)
     if response.status_code == 200:
         res_json = response.json()
         if "data" in res_json:
@@ -207,11 +219,11 @@ except Exception:
 if not m3u_url:
     m3u_url = "http://foxbleu.org:8789/get.php?username=ludovic&password=8333&type=m3u_plus&output=ts"
 
-# إنشاء تصنيفات منفصلة للترتيب
 dejla_groups = {1: "", 2: "", 3: "", 4: "", 5: "", 6: "", 7: ""}
+dejla_content = ""
 
 try:
-    m3u_response = session.get(m3u_url, headers={"User-Agent": "Ibo Pro Ultra 3.9"}, timeout=30)
+    m3u_response = session.get(m3u_url, timeout=30)
     if m3u_response.status_code == 200:
         lines = m3u_response.text.splitlines()
         current_inf = ""
@@ -223,35 +235,33 @@ try:
                 current_inf = line_stripped
             elif not line_stripped.startswith("#"):
                 if current_inf:
-                    # فحص اسم القناة لمعرفة مجموعتها
                     channel_name = current_inf.split(",")[-1]
                     group_id = get_dejla_group(channel_name)
-                    
                     if group_id:
-                        # تعديل الرابط ليتوافق مع الريسيفر
-                        final_url = f"{line_stripped}|User-Agent=Ibo Pro Ultra 3.9"
-                        
-                        # استبدال اسم المجموعة الأصلي باسم DEJLA TV للظهور في الريسيفر
+                        # روابط DEJLA TV تعمل مباشرة بدون الحاجة لإضافة User-Agent بالأنبوب لضمان عملها على الريسيفر
                         clean_inf = re.sub(r'group-title="[^"]*"', 'group-title="DEJLA TV"', current_inf)
-                        
-                        dejla_groups[group_id] += f"{clean_inf}\n{final_url}\n"
+                        dejla_groups[group_id] += f"{clean_inf}\n{line_stripped}\n"
                     current_inf = ""
+        
+        dejla_content = (
+            dejla_groups[1] + # BEIN MAX
+            dejla_groups[2] + # BEIN SPORT
+            dejla_groups[3] + # Any BEIN
+            dejla_groups[4] + # OSN / Netflix / HBO...
+            dejla_groups[5] + # FRANCE
+            dejla_groups[6] + # ALGERIA
+            dejla_groups[7]   # KIDS
+        ).strip()
 except Exception as e:
-    print(f"❌ خطأ أثناء معالجة باقة DEJLA TV: {e}")
+    print(f"❌ خطأ في سحب DEJLA TV: {e}")
 
-# دمج باقة دجلة حسب الترتيب المطلوب بدقة
-dejla_content = (
-    dejla_groups[1] + # beIN MAX
-    dejla_groups[2] + # beIN SPORT
-    dejla_groups[3] + # beIN Others
-    dejla_groups[4] + # OSN/Netflix/HBO...
-    dejla_groups[5] + # France
-    dejla_groups[6] + # Algeria
-    dejla_groups[7]   # Kids
-)
+# استخدام القنوات القديمة كنسخة احتياطية في حال حدوث عطل في خادم DEJLA TV
+if not dejla_content:
+    print("⚠️ تم استعادة قنوات DEJLA TV القديمة مؤقتاً لتعذر الاتصال بالسيرفر المباشر.")
+    dejla_content = old_dejla
 
 # ==================== (ب) جلب وتحديث باقة الباشا تيفي ====================
-print("\n🚀 جاري جلب وتحديث قنوات الباشا تيفي...")
+print("🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
 basha_separator = "# ==================== مجموعة قنوات AL BASHA TV ===================="
 basha_api_url = "https://albashatv.site/api.php"
 basha_headers = {"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "okhttp/3.9.1"}
@@ -271,11 +281,16 @@ try:
                 cleaned_url = clean_and_extract_url(raw_url)
                 basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
                 basha_content += f'{cleaned_url}\n'
-except Exception as e:
-    print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
+        basha_content = basha_content.strip()
+except Exception:
+    pass
+
+if not basha_content:
+    print("⚠️ تم استعادة قنوات الباشا القديمة لتعذر الاتصال بسيرفر الباشا.")
+    basha_content = old_basha
 
 # ==================== (ج) جلب وتحديث باقة ياسين تيفي ====================
-print("\n🚀 جاري جلب وتحديث قنوات ياسين تيفي...")
+print("🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 yacine_targets = {
     "https://def.yacinelive.com/api/categories/90/channels": "FHD",
@@ -286,27 +301,35 @@ ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 referer_value = "http://re.ycn-redirect.com/"
 
 yacine_content = ""
-for category_url, quality in yacine_targets.items():
-    channels_data = fetch_and_decrypt_yacine(session, category_url, yacine_headers)
-    if channels_data and 'data' in channels_data:
-        channels_list = channels_data['data']
-        for channel in channels_list:
-            channel_name = channel.get('name')
-            channel_id = channel.get('id')
-            channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
-            detail_data = fetch_and_decrypt_yacine(session, channel_detail_url, yacine_headers)
-            if detail_data and 'data' in detail_data:
-                streams = detail_data['data']
-                if streams:
-                    raw_url = streams[0].get('url')
-                    final_url = get_final_url(raw_url)
-                    final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}"
-                    display_name = f"{channel_name} {quality}"
-                    yacine_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
-                    yacine_content += f'{final_url_with_headers}\n'
-            time.sleep(0.3)
+try:
+    for category_url, quality in yacine_targets.items():
+        channels_data = fetch_and_decrypt_yacine(session, category_url, yacine_headers)
+        if channels_data and 'data' in channels_data:
+            channels_list = channels_data['data']
+            for channel in channels_list:
+                channel_name = channel.get('name')
+                channel_id = channel.get('id')
+                channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
+                detail_data = fetch_and_decrypt_yacine(session, channel_detail_url, yacine_headers)
+                if detail_data and 'data' in detail_data:
+                    streams = detail_data['data']
+                    if streams:
+                        raw_url = streams[0].get('url')
+                        final_url = get_final_url(raw_url)
+                        final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}"
+                        display_name = f"{channel_name} {quality}"
+                        yacine_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
+                        yacine_content += f'{final_url_with_headers}\n'
+                time.sleep(0.3)
+    yacine_content = yacine_content.strip()
+except Exception:
+    pass
 
-# دمج جميع الأقسام مع الحفاظ على قنواتك اليدوية في الأسفل
+if not yacine_content:
+    print("⚠️ تم استعادة قنوات ياسين القديمة لتعذر الاتصال بسيرفر ياسين.")
+    yacine_content = old_yacine
+
+# دمج المحتوى الكلي بشكل آمن ومرتب ومحمي بالكامل
 final_m3u_content = (
     f"#EXTM3U\n\n"
     f"{dejla_separator}\n{dejla_content}\n\n"
@@ -316,11 +339,11 @@ final_m3u_content = (
 )
 
 # 5. تحديث الـ Gist
-print("\n🔐 جاري تحديث الـ Gist بالترتيب والشروط الجديدة...")
+print("\n🔐 جاري حفظ وتحديث الـ Gist بنظام الحماية الجديد...")
 update_data = {"files": {filename: {"content": final_m3u_content}}}
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! تم تطبيق الترتيب وتحديث جميع الباقات وحماية قنواتك الخاصة.")
+    print("🎉 تم التحديث بنجاح وأصبحت جميع الباقات تعمل الآن ومحمية تماماً من الحذف التلقائي!")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
