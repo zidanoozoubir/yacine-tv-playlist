@@ -102,6 +102,23 @@ def extract_static_channels(m3u_content):
             
     return "\n".join(static_lines).strip()
 
+# دالة ذكية لفحص حالة سيرفر بروكسي الباشا ديناميكياً وعزله عن القنوات الفردية
+def check_basha_proxy_status(session):
+    test_url = "http://live-albashatv.site/"
+    try:
+        # إرسال طلب فحص للنطاق الرئيسي مع مهلة انتظار قصيرة (3 ثوانٍ) لعدم إبطاء السكربت
+        response = session.get(test_url, timeout=3, allow_redirects=False)
+        # إذا كان السيرفر مستيقظاً ولا يرجع خطأ من عائلة الـ 500 (مثل 521 الخاص بـ Cloudflare)
+        if response.status_code < 500:
+            print("⚡ تم فحص البروكسي: خادم البروكسي متاح حالياً. سيتم استخدام روابط البروكسي لتجاوز جدران الحماية.")
+            return True
+        else:
+            print(f"⚠️ تم فحص البروكسي: يرجع خطأ HTTP {response.status_code}. سيتم الانتقال تلقائياً للروابط المباشرة.")
+            return False
+    except Exception:
+        print("⚠️ تم فحص البروكسي: لا توجد استجابة من خادم البروكسي. سيتم الانتقال تلقائياً للروابط المباشرة.")
+        return False
+
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
 print("📂 جاري جلب محتوى الـ Gist الحالي...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
@@ -152,6 +169,9 @@ basha_headers = {
     "Connection": "Keep-Alive",
     "User-Agent": "okhttp/3.9.1"
 }
+
+# تشغيل دالة الفحص الذكي للبروكسي قبل معالجة قنوات الباشا
+use_basha_proxy = check_basha_proxy_status(session)
 
 # جلب الباقات العادية وباقات الـ VIP
 basha_payloads = ["method=o6&event=view", "method=o2&event=view"]
@@ -223,10 +243,12 @@ for payload in basha_payloads:
                 # تمرير القناة فقط إذا طابقت أحد الشروط الثلاثة المحددة
                 if is_bein or is_arabic_premium or is_french_target:
                     
-                    # إضافة بروكسي الباشا تيفي للرابط لكي يعمل بشكل صحيح (قاعدة صارمة رقم 1)
-                    if not raw_url.startswith("http://live-albashatv.site//stream?url="):
-                        final_basha_url = f"http://live-albashatv.site//stream?url={raw_url}"
+                    # اختيار صيغة الرابط بناءً على نتيجة فحص خادم البروكسي
+                    if use_basha_proxy:
+                        # استخدام البروكسي مع تصحيح المسار (شرطة واحدة فقط)
+                        final_basha_url = f"http://live-albashatv.site/stream?url={raw_url}"
                     else:
+                        # تجاوز البروكسي كلياً واستخدام الروابط المباشرة لضمان التشغيل المستمر
                         final_basha_url = raw_url
                     
                     basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
@@ -237,9 +259,9 @@ for payload in basha_payloads:
     except Exception as e:
         print(f"❌ خطأ أثناء جلب قنوات الباشا (Payload: {payload}): {e}")
 
-print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة عربية وفرنسية ترفيهية ورياضية من الباشا بنجاح.")
+print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح.")
 
-# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) - قاعدة صارمة رقم 2
+# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV)
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
@@ -293,7 +315,7 @@ for category_url, quality in targets.items():
                     print(f"      ✔️ نجاح.")
             time.sleep(0.5)
 
-# دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية (قاعدة صارمة رقم 3)
+# دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
 final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
 
 # 5. تحديث الـ Gist الخاص بك
