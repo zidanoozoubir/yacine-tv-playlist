@@ -70,7 +70,7 @@ def extract_static_channels(m3u_content):
     # تم استبعاد قنوات البث المباشر المحددة لمنع تكرارها في القسم الثابت
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
-        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live"
+        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "na-drtv.org"
     ]
 
     for line in lines:
@@ -325,10 +325,102 @@ for category_url, quality in targets.items():
                     print(f"      ✔️ نجاح.")
             time.sleep(0.5)
 
-# دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
-final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
+# 5. جلب وتنسيق باقة قنوات ريان تيفي (Rayan TV) ديناميكياً
+print("\n🚀 جاري جلب قنوات ريان تيفي (Rayan TV)...")
+rayan_separator = "# ==================== مجموعة قنوات RAYAN TV ===================="
+rayan_content = ""
 
-# 5. تحديث الـ Gist الخاص بك
+try:
+    rayan_api_url = "https://rayanamir.xyz/api/Getappuser.php"
+    rayan_headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "User-Agent": "smart-tv"
+    }
+    # إرسال طلب الـ POST المشفر بترميز Base64 مع حرفي التشويش "mo"
+    rayan_payload = {
+        "data": "eyJhcHBfZGV2aWNlX2lkIjoiTldVd1ptWmhObVJrTWpRNFlUTmtZZz09IiwiYXBwX3R5cGUiOiJ0dmkiLCJ2ZXJzaW9uIjoiMS4wIiwiaXNfcGFpZCI6ZmFsc2V9mo"
+    }
+    
+    rayan_response = session.post(rayan_api_url, headers=rayan_headers, json=rayan_payload, timeout=15)
+    if rayan_response.status_code == 200:
+        res_data = rayan_response.json()
+        encrypted_b64 = res_data.get("data", "")
+        
+        if encrypted_b64:
+            # إزالة حرفي التشويش "aa" من نهاية الـ Base64
+            clean_b64 = encrypted_b64[:-2]
+            
+            # تصحيح الـ padding لضمان فك التشفير بشكل سليم
+            missing_padding = len(clean_b64) % 4
+            if missing_padding:
+                clean_b64 += '=' * (4 - missing_padding)
+                
+            decrypted_json_str = base64.b64decode(clean_b64).decode('utf-8')
+            config_data = json.loads(decrypted_json_str)
+            
+            urls_list = config_data.get("urls", [])
+            if urls_list:
+                # جلب رابط الـ M3U المباشر من السيرفر الفعّال حالياً
+                m3u_url = urls_list[0].get("url")
+                print(f"   📥 تم استخراج رابط البث المباشر الفعال لريان تيفي.")
+                
+                m3u_response = session.get(m3u_url, timeout=25)
+                if m3u_response.status_code == 200:
+                    lines = m3u_response.text.splitlines()
+                    seen_urls = set()
+                    current_inf = None
+                    matched_rayan_count = 0
+                    
+                    # وسوم اللغات الأجنبية المستبعدة فوراً لقنوات beIN
+                    foreign_tags = [
+                        "en:", "es:", "tr:", "us:", "uk:", "de:", "it:", "pl:", "ru:", "gr:", "ro:", "dk:", "hu:", "ph:", "bg:",
+                        "[en]", "[es]", "[tr]", "[us]", "[uk]", "[de]", "[it]", "[pl]", "[ru]", "[gr]", "[ro]", "[dk]", "[hu]",
+                        "(en)", "(es)", "(tr)", "(us)", "(uk)", "(de)", "(it)", "(pl)", "(ru)", "(gr)", "(ro)", "(dk)", "(hu)",
+                        " en ", " es ", " tr ", " us ", " uk ", " de ", " it ", " pl ", " ru ", " gr ", " ro ", " dk "
+                    ]
+                    
+                    for line in lines:
+                        line_stripped = line.strip()
+                        if not line_stripped:
+                            continue
+                        if line_stripped.startswith("#EXTM3U"):
+                            continue
+                        if line_stripped.startswith("#EXTINF"):
+                            current_inf = line_stripped
+                        elif line_stripped.startswith("http") or line_stripped.startswith("rtmp"):
+                            if current_inf and line_stripped not in seen_urls:
+                                # استخراج اسم القناة من سطر الـ INF
+                                name_parts = current_inf.rsplit(",", 1)
+                                channel_name = name_parts[-1].strip() if len(name_parts) > 1 else "Rayan Channel"
+                                channel_name_lower = channel_name.lower()
+                                
+                                # 1. التحقق من قنوات beIN Sports و beIN Max (العربية والفرنسية فقط واستبعاد بقية اللغات فوراً)
+                                is_target_bein = False
+                                if "bein" in channel_name_lower:
+                                    if not any(tag in channel_name_lower for tag in foreign_tags):
+                                        is_target_bein = True
+                                
+                                # 2. التحقق من قنوات الفجر
+                                is_fajer = "fajer" in channel_name_lower or "الفجر" in channel_name_lower
+                                
+                                # 3. التحقق من قنوات ألوان / ألوان سبورت
+                                is_alwan = "alwan" in channel_name_lower or "الوان" in channel_name_lower
+                                
+                                # تصفية دقيقة لتجاوز وحذف أي قناة أخرى فوراً
+                                if is_target_bein or is_fajer or is_alwan:
+                                    rayan_content += f'#EXTINF:-1 tvg-logo="" group-title="RAYAN TV", {channel_name}\n'
+                                    rayan_content += f'{line_stripped}\n'
+                                    seen_urls.add(line_stripped)
+                                    matched_rayan_count += 1
+                                current_inf = None
+                    print(f"   🎯 تم تصفية واستخراج ({matched_rayan_count}) قناة فقط (بيين عربي/فرنسي، الفجر، ألوان سبورت) من ريان تيفي بنجاح.")
+except Exception as e:
+    print(f"❌ خطأ أثناء معالجة باقة ريان تيفي ديناميكياً: {e}")
+
+# دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
+final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n{rayan_separator}\n{rayan_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
+
+# 6. تحديث الـ Gist الخاص بك
 print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
 update_data = {
     "files": {
