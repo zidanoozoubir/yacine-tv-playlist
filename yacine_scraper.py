@@ -37,7 +37,7 @@ def create_session():
 # دالة للاتصال بسيرفر ياسين وفك التشفير تلقائياً
 def fetch_and_decrypt_yacine(session, url, headers):
     try:
-        response = session.get(url, headers=headers, timeout=15)
+        response = session.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             t_value = response.headers.get('T') or response.headers.get('t')
             if t_value:
@@ -48,13 +48,14 @@ def fetch_and_decrypt_yacine(session, url, headers):
         pass
     return None
 
-# دالة جلب رابط التوجيه (Redirect) لياسين تيفي
+# دالة جلب رابط التوجيه (Redirect) لياسين تيفي - تم تقصير المهلة لمنع التعليق
 def get_final_url(raw_url):
     browser_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
     }
     try:
-        r_redirect = requests.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=10)
+        # نستخدم requests المباشر بمهلة قصيرة جداً (ثانيتين) لتجنب الـ Retries والتأخير
+        r_redirect = requests.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=2)
         if r_redirect.status_code in [301, 302]:
             return r_redirect.headers.get('Location')
     except Exception:
@@ -106,8 +107,8 @@ def extract_static_channels(m3u_content):
 def check_basha_proxy_status(session):
     test_url = "http://live-albashatv.site/stream"
     try:
-        # إرسال طلب فحص ديناميكي بمهلة تشغيل قصيرة
-        response = session.get(test_url, timeout=3, allow_redirects=False)
+        # إرسال طلب فحص ديناميكي بمهلة تشغيل قصيرة (ثانيتين)
+        response = session.get(test_url, timeout=2, allow_redirects=False)
         response_text_lower = response.text.lower()
         
         # كشف ما إذا كانت الاستجابة عبارة عن صفحة حظر أو صفحة تحدي/تحقق من Cloudflare
@@ -130,14 +131,14 @@ def check_basha_proxy_status(session):
         return False
 
 # دالة لحل توجيه قنوات ريان تيفي ديناميكياً والحصول على خادم البث الفعلي ليتجاوز Cloudflare كلياً
-def resolve_rayan_redirect(session, username, password, stream_id):
+def resolve_rayan_redirect(username, password, stream_id):
     url_80 = f"http://na-drtv.org/live/{username}/{password}/{stream_id}.ts"
     headers = {
         "User-Agent": "okhttp/5.0.0-alpha.2"
     }
     try:
-        # استخدام طلب HEAD سريع للحصول على ترويسة التوجيه فقط دون تحميل حجم البث لتفادي الـ Timeout
-        r = session.head(url_80, headers=headers, allow_redirects=False, timeout=5)
+        # نستخدم requests المباشر بمهلة قصيرة جداً (3 ثوانٍ) لمنع الـ Retries والتأخير في البناء
+        r = requests.get(url_80, headers=headers, allow_redirects=False, timeout=3)
         if r.status_code in [301, 302, 307, 308]:
             loc = r.headers.get('Location')
             if loc:
@@ -160,7 +161,7 @@ static_clean = ""
 filename = "kz.m3u"
 
 try:
-    gist_response = requests.get(gist_api_url, headers=gist_headers, timeout=15)
+    gist_response = requests.get(gist_api_url, headers=gist_headers, timeout=10)
     if gist_response.status_code == 200:
         gist_data = gist_response.json()
         filename = list(gist_data['files'].keys())[0]
@@ -211,7 +212,7 @@ matched_count = 0
 
 for payload in basha_payloads:
     try:
-        basha_response = session.post(basha_api_url, headers=basha_headers, data=payload, timeout=15)
+        basha_response = session.post(basha_api_url, headers=basha_headers, data=payload, timeout=10)
         if basha_response.status_code == 200:
             basha_channels = basha_response.json()
             
@@ -364,7 +365,7 @@ try:
         "data": "eyJhcHBfZGV2aWNlX2lkIjoiTldVd1ptWmhObVJrTWpRNFlUTmtZZz09IiwiYXBwX3R5cGUiOiJ0dmkiLCJ2ZXJzaW9uIjoiMS4wIiwiaXNfcGFpZCI6ZmFsc2V9mo"
     }
     
-    rayan_response = session.post(rayan_api_url, headers=rayan_headers, json=rayan_payload, timeout=15)
+    rayan_response = session.post(rayan_api_url, headers=rayan_headers, json=rayan_payload, timeout=10)
     if rayan_response.status_code == 200:
         res_data = rayan_response.json()
         encrypted_b64 = res_data.get("data", "")
@@ -402,7 +403,7 @@ try:
         "User-Agent": "okhttp/5.0.0-alpha.2"
     }
     
-    streams_response = session.get(streams_url, headers=api_headers, timeout=25)
+    streams_response = session.get(streams_url, headers=api_headers, timeout=15)
     if streams_response.status_code == 200:
         channels_data = streams_response.json()
         print(f"   📊 تم استلام البيانات بنجاح. إجمالي القنوات المتاحة بالسيرفر: {len(channels_data)}")
@@ -415,7 +416,7 @@ try:
                 first_id = ch.get("stream_id")
                 if first_id:
                     print(f"   ⏳ جاري اختبار توجيه السيرفر مرة واحدة لمعرفة خادم البث الفعلي الفعال...")
-                    resolved_url = resolve_rayan_redirect(session, username, password, first_id)
+                    resolved_url = resolve_rayan_redirect(username, password, first_id)
                     parsed_resolved = urllib.parse.urlparse(resolved_url)
                     resolved_host = f"{parsed_resolved.scheme}://{parsed_resolved.netloc}"
                     print(f"   🎯 تم كشف وتثبيت السيرفر الفعلي المباشر للبث: {resolved_host}")
