@@ -211,7 +211,7 @@ for payload in basha_payloads:
                     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "hu", "ro", "dk", "usa"
                     " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ",
                     "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]",
-                    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "[br]", "[hu]", "[us]", "[ro]", "[dk]"
+                    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
                 ]
                 
                 if any(tag in channel_name_lower for tag in exclude_tags):
@@ -325,10 +325,15 @@ for category_url, quality in targets.items():
                     print(f"      ✔️ نجاح.")
             time.sleep(0.5)
 
-# 5. جلب وتنسيق باقة قنوات ريان تيفي (Rayan TV) ديناميكياً
+# 5. جلب وتنسيق باقة قنوات ريان تيفي (Rayan TV) ديناميكياً مع آلية طوارئ احتياطية
 print("\n🚀 جاري جلب قنوات ريان تيفي (Rayan TV)...")
 rayan_separator = "# ==================== مجموعة قنوات RAYAN TV ===================="
 rayan_content = ""
+
+# المعطيات الافتراضية كآلية طوارئ (Fallback) في حال فشل الخادم الديناميكي
+host = "http://na-drtv.org"
+username = "ub7dmtmiax"
+password = "alhqhdwla0"
 
 try:
     rayan_api_url = "https://rayanamir.xyz/api/Getappuser.php"
@@ -336,7 +341,6 @@ try:
         "Content-Type": "application/json; charset=utf-8",
         "User-Agent": "smart-tv"
     }
-    # إرسال طلب الـ POST المشفر بترميز Base64 مع حرفي التشويش "mo"
     rayan_payload = {
         "data": "eyJhcHBfZGV2aWNlX2lkIjoiTldVd1ptWmhObVJrTWpRNFlUTmtZZz09IiwiYXBwX3R5cGUiOiJ0dmkiLCJ2ZXJzaW9uIjoiMS4wIiwiaXNfcGFpZCI6ZmFsc2V9mo"
     }
@@ -347,10 +351,7 @@ try:
         encrypted_b64 = res_data.get("data", "")
         
         if encrypted_b64:
-            # إزالة حرفي التشويش "aa" من نهاية الـ Base64
             clean_b64 = encrypted_b64[:-2]
-            
-            # تصحيح الـ padding لضمان فك التشفير بشكل سليم
             missing_padding = len(clean_b64) % 4
             if missing_padding:
                 clean_b64 += '=' * (4 - missing_padding)
@@ -359,77 +360,86 @@ try:
                 decrypted_json_str = base64.b64decode(clean_b64).decode('utf-8')
                 config_data = json.loads(decrypted_json_str)
                 urls_list = config_data.get("urls", [])
+                if urls_list:
+                    # استخراج الهوست الفعال وبيانات الدخول ديناميكياً
+                    target_url = urls_list[0].get("url", "")
+                    parsed_url = urllib.parse.urlparse(target_url)
+                    host = f"{parsed_url.scheme}://{parsed_url.netloc}"
+                    query_params = urllib.parse.parse_qs(parsed_url.query)
+                    username = query_params.get("username", [username])[0]
+                    password = query_params.get("password", [password])[0]
+                    print("   ✔️ نجاح: تم جلب بيانات السيرفر الفعالة ديناميكياً.")
             except Exception as dec_err:
-                print(f"   ❌ فشل فك ترميز Base64 لبيانات الإعدادات: {dec_err}")
-                urls_list = []
-                
-            if urls_list:
-                # جلب رابط الـ M3U المباشر من السيرفر الفعّال حالياً
-                m3u_url = urls_list[0].get("url")
-                print(f"   📥 تم استخراج رابط البث المباشر الفعال لريان تيفي.")
-                
-                # ترويسة مخصصة لتخطي حظر Cloudflare على السيرفر المستهدف
-                m3u_headers = {
-                    "User-Agent": "okhttp/5.0.0-alpha.2",
-                    "Accept-Encoding": "gzip",
-                    "Connection": "Keep-Alive"
-                }
-                
-                m3u_response = session.get(m3u_url, headers=m3u_headers, timeout=25)
-                print(f"   📡 كود حالة الاستجابة لسيرفر القنوات: {m3u_response.status_code}")
-                
-                if m3u_response.status_code == 200:
-                    lines = m3u_response.text.splitlines()
-                    print(f"   📊 حجم ملف القنوات المستلم: {len(m3u_response.text)} حرف.")
-                    seen_urls = set()
-                    current_inf = None
-                    matched_rayan_count = 0
-                    
-                    # وسوم اللغات الأجنبية المستبعدة فوراً لقنوات beIN لضمان العربية والفرنسية فقط
-                    foreign_tags = [
-                        "en:", "es:", "tr:", "us:", "uk:", "de:", "it:", "pl:", "ru:", "gr:", "ro:", "dk:", "hu:", "ph:", "bg:",
-                        "[en]", "[es]", "[tr]", "[us]", "[uk]", "[de]", "[it]", "[pl]", "[ru]", "[gr]", "[ro]", "[dk]", "[hu]",
-                        "(en)", "(es)", "(tr)", "(us)", "(uk)", "(de)", "(it)", "(pl)", "(ru)", "(gr)", "(ro)", "(dk)", "(hu)",
-                        " en ", " es ", " tr ", " us ", " uk ", " de ", " it ", " pl ", " ru ", " gr ", " ro ", " dk "
-                    ]
-                    
-                    for line in lines:
-                        line_stripped = line.strip()
-                        if not line_stripped:
-                            continue
-                        if line_stripped.startswith("#EXTM3U"):
-                            continue
-                        if line_stripped.startswith("#EXTINF"):
-                            current_inf = line_stripped
-                        elif line_stripped.startswith("http") or line_stripped.startswith("rtmp"):
-                            if current_inf and line_stripped not in seen_urls:
-                                # استخراج اسم القناة من سطر الـ INF
-                                name_parts = current_inf.rsplit(",", 1)
-                                channel_name = name_parts[-1].strip() if len(name_parts) > 1 else "Rayan Channel"
-                                channel_name_lower = channel_name.lower()
-                                
-                                # 1. التحقق من قنوات beIN Sports و beIN Max (العربية والفرنسية فقط واستبعاد بقية اللغات فوراً)
-                                is_target_bein = False
-                                if "bein" in channel_name_lower:
-                                    if not any(tag in channel_name_lower for tag in foreign_tags):
-                                        is_target_bein = True
-                                
-                                # 2. التحقق من قنوات الفجر
-                                is_fajer = "fajer" in channel_name_lower or "الفجر" in channel_name_lower
-                                
-                                # 3. التحقق من قنوات ألوان / ألوان سبورت
-                                is_alwan = "alwan" in channel_name_lower or "الوان" in channel_name_lower
-                                
-                                # تصفية دقيقة لتجاوز وحذف أي قناة أخرى فوراً
-                                if is_target_bein or is_fajer or is_alwan:
-                                    rayan_content += f'#EXTINF:-1 tvg-logo="" group-title="RAYAN TV", {channel_name}\n'
-                                    rayan_content += f'{line_stripped}\n'
-                                    seen_urls.add(line_stripped)
-                                    matched_rayan_count += 1
-                                current_inf = None
-                    print(f"   🎯 تم تصفية واستخراج ({matched_rayan_count}) قناة فقط (بيين عربي/فرنسي، الفجر، ألوان سبورت) من ريان تيفي بنجاح.")
+                print(f"   ⚠️ خطأ في فك تشفير الإعدادات الديناميكية: {dec_err}. سيتم استخدام بيانات الطوارئ الاحتياطية.")
 except Exception as e:
-    print(f"❌ خطأ أثناء معالجة باقة ريان تيفي ديناميكياً: {e}")
+    print(f"   ⚠️ فشل الاتصال بالخادم الديناميكي: {e}. سيتم استخدام بيانات الطوارئ الاحتياطية.")
+
+# الآن نقوم بالاتصال بسيرفر البث المباشر الفعال باستخدام API القنوات (player_api.php) لتفادي ثقل ملفات الـ M3U الضخمة والـ Timeout [3]
+try:
+    streams_url = f"{host}/player_api.php?action=get_live_streams&username={username}&password={password}"
+    print(f"   📡 جاري جلب القنوات من السيرفر: {host}")
+    
+    api_headers = {
+        "User-Agent": "okhttp/5.0.0-alpha.2"
+    }
+    
+    streams_response = session.get(streams_url, headers=api_headers, timeout=25)
+    if streams_response.status_code == 200:
+        channels_data = streams_response.json()
+        print(f"   📊 تم استلام البيانات بنجاح. إجمالي القنوات المتاحة بالسيرفر: {len(channels_data)}")
+        
+        matched_rayan_count = 0
+        seen_streams = set()
+        
+        # لغات البث غير المرغوبة لاستبعادها فوراً من قنوات beIN
+        forbid_langs = ["en", "es", "tr", "us", "uk", "de", "it", "pl", "ru", "gr", "ro", "dk", "hu", "ph", "bg"]
+        
+        for channel in channels_data:
+            channel_name = channel.get("name", "")
+            stream_id = channel.get("stream_id")
+            
+            if not channel_name or not stream_id:
+                continue
+                
+            channel_name_lower = channel_name.lower()
+            
+            # 1. التحقق من قنوات beIN Sports و beIN Max (العربية والفرنسية فقط واستبعاد بقية اللغات فوراً)
+            is_target_bein = False
+            if "bein" in channel_name_lower:
+                is_foreign = False
+                for lang in forbid_langs:
+                    # فحص دقيق لحدود الكلمة لمنع الخلط بين الكلمات (مثل "french")
+                    if (f" {lang} " in channel_name_lower or 
+                        channel_name_lower.startswith(f"{lang} ") or 
+                        channel_name_lower.endswith(f" {lang}") or 
+                        f"[{lang}]" in channel_name_lower or 
+                        f"({lang})" in channel_name_lower or 
+                        f"{lang}:" in channel_name_lower):
+                        is_foreign = True
+                        break
+                if not is_foreign:
+                    is_target_bein = True
+            
+            # 2. التحقق من قنوات الفجر
+            is_fajer = "fajer" in channel_name_lower or "الفجر" in channel_name_lower
+            
+            # 3. التحقق من قنوات ألوان / ألوان سبورت
+            is_alwan = "alwan" in channel_name_lower or "الوان" in channel_name_lower
+            
+            if is_target_bein or is_fajer or is_alwan:
+                stream_url = f"{host}/live/{username}/{password}/{stream_id}.ts"
+                
+                if stream_url not in seen_streams:
+                    rayan_content += f'#EXTINF:-1 tvg-logo="" group-title="RAYAN TV", {channel_name}\n'
+                    rayan_content += f'{stream_url}\n'
+                    seen_streams.add(stream_url)
+                    matched_rayan_count += 1
+                    
+        print(f"   🎯 تم تصفية واستخراج ({matched_rayan_count}) قناة فقط (بيين عربي/فرنسي، الفجر، ألوان سبورت) من ريان تيفي بنجاح.")
+    else:
+        print(f"   ❌ فشل السيرفر في الاستجابة لطلب القنوات. كود الحالة: {streams_response.status_code}")
+except Exception as e:
+    print(f"❌ خطأ أثناء الاتصال أو تحليل باقة ريان تيفي: {e}")
 
 # دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
 final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n{rayan_separator}\n{rayan_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
