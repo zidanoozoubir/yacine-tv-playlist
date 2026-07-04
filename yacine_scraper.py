@@ -12,31 +12,12 @@ from urllib3.util import Retry
 GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
-# قائمة النطاقات الاحتياطية الأساسية لتطبيق ياسين تيفي
+# قائمة النطاقات المستقرة والفعالة لتطبيق ياسين تيفي
 YACINE_DOMAINS = [
     "https://def.yacinelive.com",
-    "http://ver3.yacinelive.com",
-    "https://v31.yacinelive.com",
-    "http://yacinelive.com"
+    "https://ver3.yacinelive.com",
+    "https://v31.yacinelive.com"
 ]
-
-# دالة لاكتشاف نطاق ياسين تيفي النشط حالياً عبر تتبع التوجيه الرسمي
-def discover_yacine_live_domain():
-    try:
-        response = requests.get("http://re.ycn-redirect.com/", allow_redirects=True, timeout=5)
-        parsed_url = urllib.parse.urlparse(response.url)
-        discovered_domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
-        if discovered_domain and "ycn-redirect" not in discovered_domain:
-            print(f"🌐 تم اكتشاف نطاق ياسين تيفي النشط تلقائياً عبر التوجيه: {discovered_domain}")
-            return discovered_domain
-    except Exception:
-        pass
-    return None
-
-# دمج النطاق المكتشف حديثاً في مقدمة القائمة ليكون له الأولوية في حال تم العثور عليه
-discovered_domain = discover_yacine_live_domain()
-if discovered_domain and discovered_domain not in YACINE_DOMAINS:
-    YACINE_DOMAINS.insert(0, discovered_domain)
 
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
 def decrypt_yacine(encrypted_data, header_t):
@@ -61,7 +42,7 @@ def create_session():
     session.mount('https://', adapter)
     return session
 
-# دالة للاتصال بسيرفر ياسين وتجربة عدة نطاقات وفك التشفير تلقائياً
+# دالة للاتصال بسيرفر ياسين وتجربة النطاقات المستقرة وفك التشفير تلقائياً
 def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
     for domain in YACINE_DOMAINS:
         url = f"{domain}{endpoint_path}"
@@ -72,37 +53,10 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
                 if t_value:
                     decrypted_json_str = decrypt_yacine(response.text, t_value)
                     if decrypted_json_str:
-                        print(f"   ✔️ تم الاتصال بنجاح بالنطاق: {domain}")
                         return json.loads(decrypted_json_str)
         except Exception:
             continue
     return None
-
-# دالة لتحديد معرّف قسم (FHD) ديناميكياً لتفادي توقف السكربت عند تغيير أرقام الأقسام من المطور
-def get_yacine_dynamic_category_id(session, headers):
-    categories_data = fetch_and_decrypt_yacine_dynamic(session, "/api/categories", headers)
-    if categories_data and 'data' in categories_data:
-        categories_list = categories_data['data']
-        
-        # 1. البحث عن قسم يحتوي على FHD أو beIN FHD
-        for category in categories_list:
-            name_lower = category.get('name', '').lower()
-            if "fhd" in name_lower:
-                category_id = category.get('id')
-                print(f"🔍 تم اكتشاف قسم FHD ديناميكياً: {category.get('name')} (ID: {category_id})")
-                return category_id
-                
-        # 2. كخيار بديل إذا تم تغيير المسميات، نبحث عن أي قسم يحتوي على beIN
-        for category in categories_list:
-            name_lower = category.get('name', '').lower()
-            if "bein" in name_lower:
-                category_id = category.get('id')
-                print(f"🔍 تم اكتشاف قسم بديل لـ beIN ديناميكياً: {category.get('name')} (ID: {category_id})")
-                return category_id
-                
-    # إذا فشل الجلب لأي سبب، نعود للـ ID الافتراضي 90 كاحتياط لضمان استمرار السكربت
-    print("⚠️ فشل كشف القسم ديناميكياً، سيتم استخدام القسم الافتراضي (90).")
-    return 90
 
 # دالة جلب رابط التوجيه (Redirect) لياسين تيفي
 def get_final_url(raw_url):
@@ -120,10 +74,11 @@ def get_final_url(raw_url):
 # دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
 def get_majed_dynamic_channels(session):
     timestamp = int(time.time() * 1000)
-    config_url = f"https://majed-koora.live/config.json?v={timestamp}"
+    # استخدام بروتوكول HTTP العادي والمستقر الموثق في فحص الشبكة الخاص بك
+    config_url = f"http://majed-koora.live/config.json?v={timestamp}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-        "Referer": "https://majed-koora.live/"
+        "Referer": "http://majed-koora.live/"
     }
     try:
         response = session.get(config_url, headers=headers, timeout=10)
@@ -137,8 +92,6 @@ def get_majed_dynamic_channels(session):
     except Exception as e:
         print(f"⚠️ فشل جلب ملف الإعدادات config.json من ماجد سبورت: {e}")
     
-    # العودة للقناة الافتراضية المستخرجة من الفحص كاحتياط
-    print("⚠️ سيتم استخدام القناة الافتراضية المستخرجة من الفحص (majedsports1).")
     return ["majedsports1"]
 
 # دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
@@ -196,13 +149,13 @@ def check_basha_proxy_status(session):
         )
         
         if response.status_code in [200, 400] and not is_cloudflare_challenge:
-            print(f"⚡ تم فحص البروكسي: نشط ومتاح (كود: {response.status_code}).")
+            print(f"⚡ تم فحص البروكسي: نشط ومتاح.")
             return True
         else:
-            print(f"⚠️ تم فحص البروكسي: غير متاح أو محجوب بـ Cloudflare. سيتم استخدام الروابط المباشرة.")
+            print(f"⚠️ تم فحص البروكسي: غير متاح أو محجوب بـ Cloudflare.")
             return False
     except Exception as e:
-        print(f"⚠️ تم فحص البروكسي: فشل الاتصال ({e}). سيتم استخدام الروابط المباشرة.")
+        print(f"⚠️ تم فحص البروكسي: فشل الاتصال ({e}).")
         return False
 
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
@@ -244,7 +197,8 @@ live_content = ""
 timestamp = int(time.time() * 1000)
 
 for channel in active_majed_channels:
-    live_url = f"https://majed-koora.live/stream.php?channel={channel}&file=stream.m3u8&v={timestamp}"
+    # استخدام بروتوكول HTTP المباشر لضمان عمل الرابط على كافة الشاشات وأجهزة الاستقبال
+    live_url = f"http://majed-koora.live/stream.php?channel={channel}&file=stream.m3u8&v={timestamp}"
     display_name = channel.replace("majedsports", "Majed Sport ").title()
     
     live_content += (
@@ -342,23 +296,21 @@ for payload in basha_payloads:
 
 print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح.")
 
-# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) ديناميكياً بالكامل
+# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) مباشرة وثابتة لضمان الاستقرار
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
+
+# الفئات المستهدفة المستقرة (90 لجودة FHD، و 89 لجودة HD) لتفادي أي خطأ في مسميات الأقسام
+targets = {
+    "/api/categories/90/channels": "FHD",
+    "/api/categories/89/channels": "HD"
+}
 
 yacine_headers = {
     "Accept": "application/json",
     "Accept-Encoding": "gzip",
     "Connection": "Keep-Alive",
     "User-Agent": "okhttp/4.12.0"
-}
-
-# كشف معرّف قسم قنوات الـ FHD ديناميكياً من السيرفر
-dynamic_category_id = get_yacine_dynamic_category_id(session, yacine_headers)
-
-# بناء المسارات بناءً على القسم المكتشف
-targets = {
-    f"/api/categories/{dynamic_category_id}/channels": "FHD"
 }
 
 ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/139.0.0.0 Safari/537.36"
@@ -377,7 +329,16 @@ for category_endpoint, quality in targets.items():
             
             channel_name_lower = channel_name.lower() if channel_name else ""
             
-            if not ("max" in channel_name_lower or "bein sport" in channel_name_lower):
+            # تصفية القنوات المستهدفة بالبحث باللغتين العربية والإنجليزية لضمان الشمولية
+            is_target = (
+                "max" in channel_name_lower or 
+                "bein" in channel_name_lower or 
+                "ماكس" in channel_name_lower or 
+                "بين" in channel_name_lower or
+                "سبورت" in channel_name_lower
+            )
+            
+            if not is_target:
                 continue
                 
             print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج: {channel_name}...")
@@ -391,7 +352,7 @@ for category_endpoint, quality in targets.items():
                     raw_url = stream.get('url')
                     final_url = get_final_url(raw_url)
                     
-                    # تحويل روابط Redbee من mpd (DASH) إلى m3u8 (HLS) تلقائياً لضمان العمل على الشاشات والأجهزة القديمة
+                    # تحويل روابط Redbee من mpd (DASH) إلى m3u8 (HLS) تلقائياً لضمان تشغيلها على كافة الأجهزة والشاشات
                     if final_url and "/dash/.mpd" in final_url:
                         final_url = final_url.replace("/dash/.mpd", "/playlist.m3u8")
                     
