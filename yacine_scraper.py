@@ -102,19 +102,28 @@ def extract_static_channels(m3u_content):
             
     return "\n".join(static_lines).strip()
 
-# دالة ذكية محدثة لفحص حالة مسار البث الديناميكي في سيرفر بروكسي الباشا
+# دالة ذكية صارمة وفائقة الدقة لفحص حالة بروكسي الباشا وكشف صفحات التحدي والحظر
 def check_basha_proxy_status(session):
-    # الفحص يتم مباشرة على مسار البث لتجاوز التخزين المؤقت لـ Cloudflare وإجبارها على فحص السيرفر الفعلي
     test_url = "http://live-albashatv.site/stream"
     try:
+        # إرسال طلب فحص ديناميكي بمهلة تشغيل قصيرة
         response = session.get(test_url, timeout=3, allow_redirects=False)
-        # إذا كان السيرفر حياً، سيرد برمز حالة أقل من 500 (مثل 400 Bad Request لغياب معاملات الطلب)
-        # أما إذا كان متوقفاً، فسترد Cloudflare بالرمز 521 أو 502 (وهي رموز >= 500)
-        if response.status_code < 500:
-            print(f"⚡ تم فحص البروكسي: خادم البروكسي نشط ومتاح حالياً (كود الاستجابة: {response.status_code}). سيتم استخدامه.")
+        response_text_lower = response.text.lower()
+        
+        # كشف ما إذا كانت الاستجابة عبارة عن صفحة حظر أو صفحة تحدي/تحقق من Cloudflare
+        is_cloudflare_challenge = (
+            "cf-challenge" in response_text_lower or 
+            "challenges.cloudflare.com" in response_text_lower or 
+            "just a moment" in response_text_lower or
+            "turnstile" in response_text_lower
+        )
+        
+        # لكي نعتبر البروكسي يعمل، يجب أن يرجع كود حالة طبيعي (200 أو 400) وألا يكون صفحة تحدي أو حظر
+        if response.status_code in [200, 400] and not is_cloudflare_challenge:
+            print(f"⚡ تم فحص البروكسي: خادم البروكسي نشط ومتاح حالياً (كود: {response.status_code}). سيتم استخدام البروكسي.")
             return True
         else:
-            print(f"⚠️ تم فحص البروكسي: خادم البروكسي يرجع كود خطأ {response.status_code}. سيتم الانتقال للروابط المباشرة تلقائياً.")
+            print(f"⚠️ تم فحص البروكسي: غير متاح أو محجوب بحماية Cloudflare (كود: {response.status_code}). سيتم الانتقال للروابط المباشرة تلقائياً.")
             return False
     except Exception as e:
         print(f"⚠️ تم فحص البروكسي: فشل الاتصال المباشر بخادم البروكسي ({e}). سيتم الانتقال للروابط المباشرة تلقائياً.")
@@ -171,7 +180,7 @@ basha_headers = {
     "User-Agent": "okhttp/3.9.1"
 }
 
-# تشغيل دالة الفحص الذكي المحدثة للبروكسي قبل معالجة قنوات الباشا
+# تشغيل دالة الفحص الذكي الدقيقة للبروكسي قبل معالجة قنوات الباشا
 use_basha_proxy = check_basha_proxy_status(session)
 
 # جلب الباقات العادية وباقات الـ VIP
