@@ -296,7 +296,7 @@ for payload in basha_payloads:
 
 print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح.")
 
-# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) مباشرة وثابتة لضمان الاستقرار
+# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) ديناميكياً بالكامل
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
@@ -347,21 +347,26 @@ for category_endpoint, quality in targets.items():
             
             if detail_data and 'data' in detail_data:
                 streams = detail_data['data']
-                if streams:
-                    stream = streams[0]
+                # استخراج جميع السيرفرات المتوفرة لهذه القناة بدلاً من الخيار الأول فقط
+                for stream_idx, stream in enumerate(streams):
                     raw_url = stream.get('url')
+                    if not raw_url:
+                        continue
+                        
+                    # جلب مسمى السيرفر التلقائي من الـ API (مثل: 1، 3، HD، 5 إلخ)
+                    server_label = stream.get('name', f"Server {stream_idx + 1}")
                     final_url = get_final_url(raw_url)
                     
-                    # تحويل روابط Redbee من mpd (DASH) إلى m3u8 (HLS) تلقائياً لضمان تشغيلها على كافة الأجهزة والشاشات
+                    # تحويل روابط Redbee من mpd (DASH) إلى m3u8 (HLS) تلقائياً لضمان تشغيلها على كافة الأجهزة
                     if final_url and "/dash/.mpd" in final_url:
                         final_url = final_url.replace("/dash/.mpd", "/playlist.m3u8")
                     
                     final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}"
-                    display_name = f"{channel_name} {quality}"
+                    display_name = f"{channel_name} {quality} - {server_label}"
                     
                     yacine_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
                     yacine_content += f'{final_url_with_headers}\n'
-                    print(f"      ✔️ نجاح.")
+                    print(f"      ✔️ نجاح استخراج السيرفر: {server_label}")
             time.sleep(0.5)
 
 # دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
