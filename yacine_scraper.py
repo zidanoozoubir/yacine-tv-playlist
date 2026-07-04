@@ -483,3 +483,14 @@ print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
 update_data = {
     "files": {
         filename: {
+            "content": final_m3u_content
+        }
+    }
+}
+
+update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
+
+if update_response.status_code == 200:
+    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة ونظيفة وجاهزة للعمل على الريسيفر.")
+else:
+    print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
