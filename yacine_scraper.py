@@ -137,7 +137,7 @@ def resolve_rayan_redirect(session, username, password, stream_id):
     }
     try:
         # استخدام طلب HEAD سريع للحصول على ترويسة التوجيه فقط دون تحميل حجم البث لتفادي الـ Timeout
-        r = session.head(url_80, headers=headers, allow_redirects=False, timeout=6)
+        r = session.head(url_80, headers=headers, allow_redirects=False, timeout=5)
         if r.status_code in [301, 302, 307, 308]:
             loc = r.headers.get('Location')
             if loc:
@@ -407,6 +407,20 @@ try:
         channels_data = streams_response.json()
         print(f"   📊 تم استلام البيانات بنجاح. إجمالي القنوات المتاحة بالسيرفر: {len(channels_data)}")
         
+        # --- تحسين جوهري فائق السرعة لمنع الـ Hang والـ Timeout ---
+        # بدلاً من حل توجيه كل قناة على حدة، نقوم بحل التوجيه "مرة واحدة فقط" لأول قناة فعالة، لسرعة قصوى وثبات كامل [2]
+        resolved_host = "http://na-drtv.org:8080" # السيرفر الاحتياطي الافتراضي
+        if channels_data:
+            for ch in channels_data:
+                first_id = ch.get("stream_id")
+                if first_id:
+                    print(f"   ⏳ جاري اختبار توجيه السيرفر مرة واحدة لمعرفة خادم البث الفعلي الفعال...")
+                    resolved_url = resolve_rayan_redirect(session, username, password, first_id)
+                    parsed_resolved = urllib.parse.urlparse(resolved_url)
+                    resolved_host = f"{parsed_resolved.scheme}://{parsed_resolved.netloc}"
+                    print(f"   🎯 تم كشف وتثبيت السيرفر الفعلي المباشر للبث: {resolved_host}")
+                    break
+        
         matched_rayan_count = 0
         seen_streams = set()
         
@@ -446,9 +460,8 @@ try:
             is_alwan = "alwan" in channel_name_lower or "الوان" in channel_name_lower
             
             if is_target_bein or is_fajer or is_alwan:
-                # حل توجيه السيرفر ديناميكياً للحصول على خادم البث الفعلي المباشر المفتوح (لتخطي جدار حماية Cloudflare كلياً) [2]
-                print(f"      ⏳ جاري حل توجيه القناة: {channel_name}...")
-                stream_url = resolve_rayan_redirect(session, username, password, stream_id)
+                # توليد رابط البث المباشر فوراً باستخدام السيرفر الفعلي المكتشف دون تكرار طلبات الشبكة المبطئة
+                stream_url = f"{resolved_host}/live/{username}/{password}/{stream_id}.ts"
                 
                 if stream_url not in seen_streams:
                     rayan_content += f'#EXTINF:-1 tvg-logo="" group-title="RAYAN TV", {channel_name}\n'
@@ -456,7 +469,7 @@ try:
                     seen_streams.add(stream_url)
                     matched_rayan_count += 1
                     
-        print(f"   🎯 تم تصفية واستخراج ({matched_rayan_count}) قناة من ريان تيفي بنجاح.")
+        print(f"   🎯 تم تصفية واستخراج ({matched_rayan_count}) قناة من ريان تيفي بنجاح وبسرعة فائقة.")
     else:
         print(f"   ❌ فشل السيرفر في الاستجابة لطلب القنوات. كود الحالة: {streams_response.status_code}")
 except Exception as e:
@@ -470,14 +483,3 @@ print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
 update_data = {
     "files": {
         filename: {
-            "content": final_m3u_content
-        }
-    }
-}
-
-update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
-
-if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة ونظيفة وجاهزة للعمل على الريسيفر.")
-else:
-    print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
