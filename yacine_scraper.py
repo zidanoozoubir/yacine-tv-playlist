@@ -129,6 +129,25 @@ def check_basha_proxy_status(session):
         print(f"⚠️ تم فحص البروكسي: فشل الاتصال المباشر بخادم البروكسي ({e}). سيتم الانتقال للروابط المباشرة تلقائياً.")
         return False
 
+# دالة لحل توجيه قنوات ريان تيفي ديناميكياً والحصول على خادم البث الفعلي ليتجاوز Cloudflare كلياً
+def resolve_rayan_redirect(session, username, password, stream_id):
+    url_80 = f"http://na-drtv.org/live/{username}/{password}/{stream_id}.ts"
+    headers = {
+        "User-Agent": "okhttp/5.0.0-alpha.2"
+    }
+    try:
+        # استخدام طلب HEAD سريع للحصول على ترويسة التوجيه فقط دون تحميل حجم البث لتفادي الـ Timeout
+        r = session.head(url_80, headers=headers, allow_redirects=False, timeout=6)
+        if r.status_code in [301, 302, 307, 308]:
+            loc = r.headers.get('Location')
+            if loc:
+                return urllib.parse.urljoin(url_80, loc)
+    except Exception:
+        pass
+    
+    # في حال فشل التوجيه، نعود للمنفذ الاحتياطي 8080 كآلية طوارئ
+    return f"http://na-drtv.org:8080/live/{username}/{password}/{stream_id}.ts"
+
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
 print("📂 جاري جلب محتوى الـ Gist الحالي...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
@@ -427,8 +446,9 @@ try:
             is_alwan = "alwan" in channel_name_lower or "الوان" in channel_name_lower
             
             if is_target_bein or is_fajer or is_alwan:
-                # استخدام المنفذ المباشر للبث 8080 لتجاوز جدار حماية Cloudflare بالكامل ليعمل على أي ريسيفر و VLC
-                stream_url = f"http://na-drtv.org:8080/live/{username}/{password}/{stream_id}.ts"
+                # حل توجيه السيرفر ديناميكياً للحصول على خادم البث الفعلي المباشر المفتوح (لتخطي جدار حماية Cloudflare كلياً) [2]
+                print(f"      ⏳ جاري حل توجيه القناة: {channel_name}...")
+                stream_url = resolve_rayan_redirect(session, username, password, stream_id)
                 
                 if stream_url not in seen_streams:
                     rayan_content += f'#EXTINF:-1 tvg-logo="" group-title="RAYAN TV", {channel_name}\n'
