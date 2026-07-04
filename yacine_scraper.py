@@ -37,7 +37,7 @@ def create_session():
 # دالة للاتصال بسيرفر ياسين وفك التشفير تلقائياً
 def fetch_and_decrypt_yacine(session, url, headers):
     try:
-        response = session.get(url, headers=headers, timeout=10)
+        response = session.get(url, headers=headers, timeout=15)
         if response.status_code == 200:
             t_value = response.headers.get('T') or response.headers.get('t')
             if t_value:
@@ -48,14 +48,13 @@ def fetch_and_decrypt_yacine(session, url, headers):
         pass
     return None
 
-# دالة جلب رابط التوجيه (Redirect) لياسين تيفي - تم تقصير المهلة لمنع التعليق
+# دالة جلب رابط التوجيه (Redirect) لياسين تيفي
 def get_final_url(raw_url):
     browser_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
     }
     try:
-        # نستخدم requests المباشر بمهلة قصيرة جداً (ثانيتين) لتجنب الـ Retries والتأخير
-        r_redirect = requests.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=2)
+        r_redirect = requests.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=10)
         if r_redirect.status_code in [301, 302]:
             return r_redirect.headers.get('Location')
     except Exception:
@@ -71,7 +70,7 @@ def extract_static_channels(m3u_content):
     # تم استبعاد قنوات البث المباشر المحددة لمنع تكرارها في القسم الثابت
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
-        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "na-drtv.org"
+        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live"
     ]
 
     for line in lines:
@@ -107,8 +106,8 @@ def extract_static_channels(m3u_content):
 def check_basha_proxy_status(session):
     test_url = "http://live-albashatv.site/stream"
     try:
-        # إرسال طلب فحص ديناميكي بمهلة تشغيل قصيرة (ثانيتين)
-        response = session.get(test_url, timeout=2, allow_redirects=False)
+        # إرسال طلب فحص ديناميكي بمهلة تشغيل قصيرة
+        response = session.get(test_url, timeout=3, allow_redirects=False)
         response_text_lower = response.text.lower()
         
         # كشف ما إذا كانت الاستجابة عبارة عن صفحة حظر أو صفحة تحدي/تحقق من Cloudflare
@@ -130,25 +129,6 @@ def check_basha_proxy_status(session):
         print(f"⚠️ تم فحص البروكسي: فشل الاتصال المباشر بخادم البروكسي ({e}). سيتم الانتقال للروابط المباشرة تلقائياً.")
         return False
 
-# دالة لحل توجيه قنوات ريان تيفي ديناميكياً والحصول على خادم البث الفعلي ليتجاوز Cloudflare كلياً
-def resolve_rayan_redirect(username, password, stream_id):
-    url_80 = f"http://na-drtv.org/live/{username}/{password}/{stream_id}.ts"
-    headers = {
-        "User-Agent": "okhttp/5.0.0-alpha.2"
-    }
-    try:
-        # نستخدم requests المباشر بمهلة قصيرة جداً (3 ثوانٍ) لمنع الـ Retries والتأخير في البناء
-        r = requests.get(url_80, headers=headers, allow_redirects=False, timeout=3)
-        if r.status_code in [301, 302, 307, 308]:
-            loc = r.headers.get('Location')
-            if loc:
-                return urllib.parse.urljoin(url_80, loc)
-    except Exception:
-        pass
-    
-    # في حال فشل التوجيه، نعود للمنفذ الاحتياطي 8080 كآلية طوارئ
-    return f"http://na-drtv.org:8080/live/{username}/{password}/{stream_id}.ts"
-
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
 print("📂 جاري جلب محتوى الـ Gist الحالي...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
@@ -161,7 +141,7 @@ static_clean = ""
 filename = "kz.m3u"
 
 try:
-    gist_response = requests.get(gist_api_url, headers=gist_headers, timeout=10)
+    gist_response = requests.get(gist_api_url, headers=gist_headers, timeout=15)
     if gist_response.status_code == 200:
         gist_data = gist_response.json()
         filename = list(gist_data['files'].keys())[0]
@@ -212,7 +192,7 @@ matched_count = 0
 
 for payload in basha_payloads:
     try:
-        basha_response = session.post(basha_api_url, headers=basha_headers, data=payload, timeout=10)
+        basha_response = session.post(basha_api_url, headers=basha_headers, data=payload, timeout=15)
         if basha_response.status_code == 200:
             basha_channels = basha_response.json()
             
@@ -231,7 +211,7 @@ for payload in basha_payloads:
                     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "hu", "ro", "dk", "usa"
                     " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ",
                     "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]",
-                    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "[br]", "[hu]", "[us]", "[ro]", "[dk]"
+                    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
                 ]
                 
                 if any(tag in channel_name_lower for tag in exclude_tags):
@@ -345,141 +325,10 @@ for category_url, quality in targets.items():
                     print(f"      ✔️ نجاح.")
             time.sleep(0.5)
 
-# 5. جلب وتنسيق باقة قنوات ريان تيفي (Rayan TV) ديناميكياً مع آلية طوارئ احتياطية
-print("\n🚀 جاري جلب قنوات ريان تيفي (Rayan TV)...")
-rayan_separator = "# ==================== مجموعة قنوات RAYAN TV ===================="
-rayan_content = ""
-
-# المعطيات الافتراضية كآلية طوارئ (Fallback) في حال فشل الخادم الديناميكي
-host = "http://na-drtv.org"
-username = "ub7dmtmiax"
-password = "alhqhdwla0"
-
-try:
-    rayan_api_url = "https://rayanamir.xyz/api/Getappuser.php"
-    rayan_headers = {
-        "Content-Type": "application/json; charset=utf-8",
-        "User-Agent": "smart-tv"
-    }
-    rayan_payload = {
-        "data": "eyJhcHBfZGV2aWNlX2lkIjoiTldVd1ptWmhObVJrTWpRNFlUTmtZZz09IiwiYXBwX3R5cGUiOiJ0dmkiLCJ2ZXJzaW9uIjoiMS4wIiwiaXNfcGFpZCI6ZmFsc2V9mo"
-    }
-    
-    rayan_response = session.post(rayan_api_url, headers=rayan_headers, json=rayan_payload, timeout=10)
-    if rayan_response.status_code == 200:
-        res_data = rayan_response.json()
-        encrypted_b64 = res_data.get("data", "")
-        
-        if encrypted_b64:
-            clean_b64 = encrypted_b64[:-2]
-            missing_padding = len(clean_b64) % 4
-            if missing_padding:
-                clean_b64 += '=' * (4 - missing_padding)
-                
-            try:
-                decrypted_json_str = base64.b64decode(clean_b64).decode('utf-8')
-                config_data = json.loads(decrypted_json_str)
-                urls_list = config_data.get("urls", [])
-                if urls_list:
-                    # استخراج الهوست الفعال وبيانات الدخول ديناميكياً
-                    target_url = urls_list[0].get("url", "")
-                    parsed_url = urllib.parse.urlparse(target_url)
-                    host = f"{parsed_url.scheme}://{parsed_url.netloc}"
-                    query_params = urllib.parse.parse_qs(parsed_url.query)
-                    username = query_params.get("username", [username])[0]
-                    password = query_params.get("password", [password])[0]
-                    print("   ✔️ نجاح: تم جلب بيانات السيرفر الفعالة ديناميكياً.")
-            except Exception as dec_err:
-                print(f"   ⚠️ خطأ في فك تشفير الإعدادات الديناميكية: {dec_err}. سيتم استخدام بيانات الطوارئ الاحتياطية.")
-except Exception as e:
-    print(f"   ⚠️ فشل الاتصال بالخادم الديناميكي: {e}. سيتم استخدام بيانات الطوارئ الاحتياطية.")
-
-# الآن نقوم بالاتصال بسيرفر البث المباشر الفعال باستخدام API القنوات (player_api.php) لتفادي ثقل ملفات الـ M3U الضخمة والـ Timeout [3]
-try:
-    streams_url = f"{host}/player_api.php?action=get_live_streams&username={username}&password={password}"
-    print(f"   📡 جاري جلب القنوات من السيرفر: {host}")
-    
-    api_headers = {
-        "User-Agent": "okhttp/5.0.0-alpha.2"
-    }
-    
-    streams_response = session.get(streams_url, headers=api_headers, timeout=15)
-    if streams_response.status_code == 200:
-        channels_data = streams_response.json()
-        print(f"   📊 تم استلام البيانات بنجاح. إجمالي القنوات المتاحة بالسيرفر: {len(channels_data)}")
-        
-        # --- تحسين جوهري فائق السرعة لمنع الـ Hang والـ Timeout ---
-        # بدلاً من حل توجيه كل قناة على حدة، نقوم بحل التوجيه "مرة واحدة فقط" لأول قناة فعالة، لسرعة قصوى وثبات كامل [2]
-        resolved_host = "http://na-drtv.org:8080" # السيرفر الاحتياطي الافتراضي
-        if channels_data:
-            for ch in channels_data:
-                first_id = ch.get("stream_id")
-                if first_id:
-                    print(f"   ⏳ جاري اختبار توجيه السيرفر مرة واحدة لمعرفة خادم البث الفعلي الفعال...")
-                    resolved_url = resolve_rayan_redirect(username, password, first_id)
-                    parsed_resolved = urllib.parse.urlparse(resolved_url)
-                    resolved_host = f"{parsed_resolved.scheme}://{parsed_resolved.netloc}"
-                    print(f"   🎯 تم كشف وتثبيت السيرفر الفعلي المباشر للبث: {resolved_host}")
-                    break
-        
-        matched_rayan_count = 0
-        seen_streams = set()
-        
-        # لغات البث غير المرغوبة لاستبعادها فوراً من قنوات beIN
-        forbid_langs = ["en", "es", "tr", "us", "uk", "de", "it", "pl", "ru", "gr", "ro", "dk", "hu", "ph", "bg"]
-        
-        for channel in channels_data:
-            channel_name = channel.get("name", "")
-            stream_id = channel.get("stream_id")
-            
-            if not channel_name or not stream_id:
-                continue
-                
-            channel_name_lower = channel_name.lower()
-            
-            # 1. التحقق من قنوات beIN Sports و beIN Max (العربية والفرنسية فقط واستبعاد بقية اللغات فوراً)
-            is_target_bein = False
-            if "bein" in channel_name_lower:
-                is_foreign = False
-                for lang in forbid_langs:
-                    # فحص دقيق لحدود الكلمة لمنع الخلط بين الكلمات (مثل "french")
-                    if (f" {lang} " in channel_name_lower or 
-                        channel_name_lower.startswith(f"{lang} ") or 
-                        channel_name_lower.endswith(f" {lang}") or 
-                        f"[{lang}]" in channel_name_lower or 
-                        f"({lang})" in channel_name_lower or 
-                        f"{lang}:" in channel_name_lower):
-                        is_foreign = True
-                        break
-                if not is_foreign:
-                    is_target_bein = True
-            
-            # 2. التحقق من قنوات الفجر
-            is_fajer = "fajer" in channel_name_lower or "الفجر" in channel_name_lower
-            
-            # 3. التحقق من قنوات ألوان / ألوان سبورت
-            is_alwan = "alwan" in channel_name_lower or "الوان" in channel_name_lower
-            
-            if is_target_bein or is_fajer or is_alwan:
-                # توليد رابط البث المباشر فوراً باستخدام السيرفر الفعلي المكتشف دون تكرار طلبات الشبكة المبطئة
-                stream_url = f"{resolved_host}/live/{username}/{password}/{stream_id}.ts"
-                
-                if stream_url not in seen_streams:
-                    rayan_content += f'#EXTINF:-1 tvg-logo="" group-title="RAYAN TV", {channel_name}\n'
-                    rayan_content += f'{stream_url}\n'
-                    seen_streams.add(stream_url)
-                    matched_rayan_count += 1
-                    
-        print(f"   🎯 تم تصفية واستخراج ({matched_rayan_count}) قناة من ريان تيفي بنجاح وبسرعة فائقة.")
-    else:
-        print(f"   ❌ فشل السيرفر في الاستجابة لطلب القنوات. كود الحالة: {streams_response.status_code}")
-except Exception as e:
-    print(f"❌ خطأ أثناء الاتصال أو تحليل باقة ريان تيفي: {e}")
-
 # دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
-final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n{rayan_separator}\n{rayan_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
+final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
 
-# 6. تحديث الـ Gist الخاص بك
+# 5. تحديث الـ Gist الخاص بك
 print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
 update_data = {
     "files": {
