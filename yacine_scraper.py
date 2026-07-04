@@ -211,7 +211,7 @@ for payload in basha_payloads:
                     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "hu", "ro", "dk", "usa"
                     " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ",
                     "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]",
-                    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
+                    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "[br]", "[hu]", "[us]", "[ro]", "[dk]"
                 ]
                 
                 if any(tag in channel_name_lower for tag in exclude_tags):
@@ -427,7 +427,8 @@ try:
             is_alwan = "alwan" in channel_name_lower or "الوان" in channel_name_lower
             
             if is_target_bein or is_fajer or is_alwan:
-                stream_url = f"{host}/live/{username}/{password}/{stream_id}.ts"
+                # استخدام المنفذ المباشر للبث 8080 لتجاوز جدار حماية Cloudflare بالكامل ليعمل على أي ريسيفر و VLC
+                stream_url = f"http://na-drtv.org:8080/live/{username}/{password}/{stream_id}.ts"
                 
                 if stream_url not in seen_streams:
                     rayan_content += f'#EXTINF:-1 tvg-logo="" group-title="RAYAN TV", {channel_name}\n'
@@ -435,7 +436,7 @@ try:
                     seen_streams.add(stream_url)
                     matched_rayan_count += 1
                     
-        print(f"   🎯 تم تصفية واستخراج ({matched_rayan_count}) قناة فقط (بيين عربي/فرنسي، الفجر، ألوان سبورت) من ريان تيفي بنجاح.")
+        print(f"   🎯 تم تصفية واستخراج ({matched_rayan_count}) قناة من ريان تيفي بنجاح.")
     else:
         print(f"   ❌ فشل السيرفر في الاستجابة لطلب القنوات. كود الحالة: {streams_response.status_code}")
 except Exception as e:
