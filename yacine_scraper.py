@@ -3,6 +3,7 @@ import requests
 import json
 import time
 import os
+import re
 import urllib.parse
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
@@ -10,6 +11,14 @@ from urllib3.util import Retry
 # جلب معلومات الـ Gist من متغيرات البيئة الآمنة (GitHub Secrets)
 GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
+
+# قائمة النطاقات الاحتياطية لتطبيق ياسين تيفي
+YACINE_DOMAINS = [
+    "https://def.yacinelive.com",
+    "http://ver3.yacinelive.com",
+    "https://v31.yacinelive.com",
+    "http://yacinelive.com"
+]
 
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
 def decrypt_yacine(encrypted_data, header_t):
@@ -34,18 +43,21 @@ def create_session():
     session.mount('https://', adapter)
     return session
 
-# دالة للاتصال بسيرفر ياسين وفك التشفير تلقائياً
-def fetch_and_decrypt_yacine(session, url, headers):
-    try:
-        response = session.get(url, headers=headers, timeout=15)
-        if response.status_code == 200:
-            t_value = response.headers.get('T') or response.headers.get('t')
-            if t_value:
-                decrypted_json_str = decrypt_yacine(response.text, t_value)
-                if decrypted_json_str:
-                    return json.loads(decrypted_json_str)
-    except Exception:
-        pass
+# دالة للاتصال بسيرفر ياسين وتجربة عدة نطاقات وفك التشفير تلقائياً
+def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
+    for domain in YACINE_DOMAINS:
+        url = f"{domain}{endpoint_path}"
+        try:
+            response = session.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                t_value = response.headers.get('T') or response.headers.get('t')
+                if t_value:
+                    decrypted_json_str = decrypt_yacine(response.text, t_value)
+                    if decrypted_json_str:
+                        print(f"   ✔️ تم الاتصال بنجاح بالنطاق: {domain}")
+                        return json.loads(decrypted_json_str)
+        except Exception:
+            continue
     return None
 
 # دالة جلب رابط التوجيه (Redirect) لياسين تيفي
@@ -61,13 +73,38 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
+# دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
+def get_majed_dynamic_channels(session):
+    timestamp = int(time.time() * 1000)
+    config_url = f"https://majed-koora.live/config.json?v={timestamp}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+        "Referer": "https://majed-koora.live/"
+    }
+    try:
+        response = session.get(config_url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            # البحث عن أي كلمة تبدأ بـ majed في ملف الإعدادات لتجنب المشاكل في حال تغير هيكلية الـ JSON
+            found = re.findall(r'majed[a-zA-Z0-9_-]+', response.text)
+            # تصفية الكلمات التي ليست معرفات قنوات بث
+            channels = [c for c in found if "koora" not in c.lower() and "live" not in c.lower()]
+            if channels:
+                unique_channels = list(dict.fromkeys(channels))
+                print(f"🔍 تم اكتشاف القنوات النشطة من ملف الإعدادات: {unique_channels}")
+                return unique_channels
+    except Exception as e:
+        print(f"⚠️ فشل جلب ملف الإعدادات config.json من ماجد سبورت: {e}")
+    
+    # العودة للقناة الافتراضية المستخرجة من لقطة فحصك للشبكة كاحتياط
+    print("⚠️ سيتم استخدام القناة الافتراضية المستخرجة من الفحص (majedsports1).")
+    return ["majedsports1"]
+
 # دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
 def extract_static_channels(m3u_content):
     lines = m3u_content.splitlines()
     static_lines = []
     current_channel_block = []
     
-    # تم استبعاد قنوات البث المباشر المحددة لمنع تكرارها في القسم الثابت
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live"
@@ -102,15 +139,13 @@ def extract_static_channels(m3u_content):
             
     return "\n".join(static_lines).strip()
 
-# دالة ذكية صارمة وفائقة الدقة لفحص حالة بروكسي الباشا وكشف صفحات التحدي والحظر
+# دالة لفحص حالة بروكسي الباشا وكشف صفحات التحدي والحظر
 def check_basha_proxy_status(session):
     test_url = "http://live-albashatv.site/stream"
     try:
-        # إرسال طلب فحص ديناميكي بمهلة تشغيل قصيرة
         response = session.get(test_url, timeout=3, allow_redirects=False)
         response_text_lower = response.text.lower()
         
-        # كشف ما إذا كانت الاستجابة عبارة عن صفحة حظر أو صفحة تحدي/تحقق من Cloudflare
         is_cloudflare_challenge = (
             "cf-challenge" in response_text_lower or 
             "challenges.cloudflare.com" in response_text_lower or 
@@ -118,15 +153,14 @@ def check_basha_proxy_status(session):
             "turnstile" in response_text_lower
         )
         
-        # لكي نعتبر البروكسي يعمل، يجب أن يرجع كود حالة طبيعي (200 أو 400) وألا يكون صفحة تحدي أو حظر
         if response.status_code in [200, 400] and not is_cloudflare_challenge:
-            print(f"⚡ تم فحص البروكسي: خادم البروكسي نشط ومتاح حالياً (كود: {response.status_code}). سيتم استخدام البروكسي.")
+            print(f"⚡ تم فحص البروكسي: نشط ومتاح (كود: {response.status_code}).")
             return True
         else:
-            print(f"⚠️ تم فحص البروكسي: غير متاح أو محجوب بحماية Cloudflare (كود: {response.status_code}). سيتم الانتقال للروابط المباشرة تلقائياً.")
+            print(f"⚠️ تم فحص البروكسي: غير متاح أو محجوب بـ Cloudflare. سيتم استخدام الروابط المباشرة.")
             return False
     except Exception as e:
-        print(f"⚠️ تم فحص البروكسي: فشل الاتصال المباشر بخادم البروكسي ({e}). سيتم الانتقال للروابط المباشرة تلقائياً.")
+        print(f"⚠️ تم فحص البروكسي: فشل الاتصال ({e}). سيتم استخدام الروابط المباشرة.")
         return False
 
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
@@ -159,16 +193,25 @@ except Exception as e:
 session = create_session()
 final_m3u_content = ""
 
-# 2. تهيئة وتجهيز باقة قنوات LIVE المباشرة الجديدة بالترتيب الأول
-print("\n⚽ جاري تهيئة مجموعة قنوات LIVE المباشرة...")
+# 2. كشف وتجهيز باقة قنوات LIVE المباشرة ديناميكياً
+print("\n⚽ جاري كشف وتجهيز مجموعة قنوات LIVE المباشرة...")
 live_separator = "# ==================== مجموعة قنوات LIVE ===================="
-live_url = "https://majed-koora.live/stream.php?channel=majed20267&file=stream.m3u8"
-live_content = (
-    f'#EXTINF:-1 tvg-logo="" group-title="LIVE", Match LIVE TV FHD\n'
-    f'{live_url}\n'
-    f'#EXTINF:-1 tvg-logo="" group-title="LIVE", Match LIVE TV HD\n'
-    f'{live_url}\n'
-)
+
+active_majed_channels = get_majed_dynamic_channels(session)
+live_content = ""
+timestamp = int(time.time() * 1000)
+
+for channel in active_majed_channels:
+    # بناء الرابط التلقائي بمعرف القناة النشط والوقت الفعلي بالملي ثانية
+    live_url = f"https://majed-koora.live/stream.php?channel={channel}&file=stream.m3u8&v={timestamp}"
+    display_name = channel.replace("majedsports", "Majed Sport ").title()
+    
+    live_content += (
+        f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {display_name} FHD\n'
+        f'{live_url}\n'
+        f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {display_name} HD\n'
+        f'{live_url}\n'
+    )
 
 # 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV)
 print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
@@ -180,12 +223,8 @@ basha_headers = {
     "User-Agent": "okhttp/3.9.1"
 }
 
-# تشغيل دالة الفحص الذكي الدقيقة للبروكسي قبل معالجة قنوات الباشا
 use_basha_proxy = check_basha_proxy_status(session)
-
-# جلب الباقات العادية وباقات الـ VIP
 basha_payloads = ["method=o6&event=view", "method=o2&event=view"]
-
 basha_content = ""
 seen_basha_urls = set() 
 matched_count = 0
@@ -205,10 +244,9 @@ for payload in basha_payloads:
                     
                 channel_name_lower = channel_name.lower()
                 
-                # تصفية صارمة جداً لحذف قنوات الـ VIP وقنوات الدول غير المرغوبة فوراً
                 exclude_tags = [
                     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
-                    "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "hu", "ro", "dk", "usa"
+                    "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "hu", "ro", "dk", "usa",
                     " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ",
                     "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]",
                     "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
@@ -217,10 +255,8 @@ for payload in basha_payloads:
                 if any(tag in channel_name_lower for tag in exclude_tags):
                     continue
                 
-                # أ - قنوات beIN Sports و beIN Max (العربية والفرنسية)
                 is_bein = "bein" in channel_name_lower
                 
-                # ب - القنوات الترفيهية العربية المحددة (OSN, Netflix, HBO, Amazon, VIP, Shahid, MBC, الكأس، الفجر، الوان، ثمانية، STC)
                 is_arabic_premium = False
                 premium_keywords = [
                     "osn", "netflix", "hbo", "amazon", "vip", "shahid", 
@@ -237,7 +273,6 @@ for payload in basha_payloads:
                     if has_arabic_chars or not has_foreign_tag:
                         is_arabic_premium = True
                 
-                # ج - القنوات الفرنسية المحددة (الوثائقية، الوطنية العامة، الأفلام، الرياضة، الأطفال)
                 is_french_target = False
                 french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
                 if any(tag in channel_name_lower for tag in french_tags) or "canal+" in channel_name_lower:
@@ -250,15 +285,10 @@ for payload in basha_payloads:
                     if any(kw in channel_name_lower for kw in french_keywords):
                         is_french_target = True
                 
-                # تمرير القناة فقط إذا طابقت أحد الشروط الثلاثة المحددة
                 if is_bein or is_arabic_premium or is_french_target:
-                    
-                    # اختيار صيغة الرابط بناءً على نتيجة فحص خادم البروكسي
                     if use_basha_proxy:
-                        # استخدام البروكسي مع تصحيح المسار (شرطة واحدة فقط)
                         final_basha_url = f"http://live-albashatv.site/stream?url={raw_url}"
                     else:
-                        # تجاوز البروكسي كلياً واستخدام الروابط المباشرة لضمان التشغيل المستمر
                         final_basha_url = raw_url
                     
                     basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
@@ -267,17 +297,16 @@ for payload in basha_payloads:
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
     except Exception as e:
-        print(f"❌ خطأ أثناء جلب قنوات الباشا (Payload: {payload}): {e}")
+        print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
 
 print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح.")
 
-# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV)
+# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) ديناميكياً
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
-# الإبقاء على جودة FHD فقط (الفئة 90)
 targets = {
-    "https://def.yacinelive.com/api/categories/90/channels": "FHD"
+    "/api/categories/90/channels": "FHD"
 }
 yacine_headers = {
     "Accept": "application/json",
@@ -290,9 +319,9 @@ ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 referer_value = "http://re.ycn-redirect.com/"
 
 yacine_content = ""
-for category_url, quality in targets.items():
+for category_endpoint, quality in targets.items():
     print(f"🔄 جاري سحب باقة ياسين بجودة {quality}...")
-    channels_data = fetch_and_decrypt_yacine(session, category_url, yacine_headers)
+    channels_data = fetch_and_decrypt_yacine_dynamic(session, category_endpoint, yacine_headers)
     
     if channels_data and 'data' in channels_data:
         channels_list = channels_data['data']
@@ -302,13 +331,12 @@ for category_url, quality in targets.items():
             
             channel_name_lower = channel_name.lower() if channel_name else ""
             
-            # التأكد من أن القناة هي إما MAX أو beIN Sport العادية
             if not ("max" in channel_name_lower or "bein sport" in channel_name_lower):
                 continue
                 
             print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج: {channel_name}...")
-            channel_detail_url = f"https://def.yacinelive.com/api/channel/{channel_id}"
-            detail_data = fetch_and_decrypt_yacine(session, channel_detail_url, yacine_headers)
+            channel_detail_endpoint = f"/api/channel/{channel_id}"
+            detail_data = fetch_and_decrypt_yacine_dynamic(session, channel_detail_endpoint, yacine_headers)
             
             if detail_data and 'data' in detail_data:
                 streams = detail_data['data']
