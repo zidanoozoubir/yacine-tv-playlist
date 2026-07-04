@@ -211,7 +211,7 @@ for payload in basha_payloads:
                     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "hu", "ro", "dk", "usa"
                     " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ",
                     "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]",
-                    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
+                    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "[br]", "[hu]", "[us]", "[ro]", "[dk]"
                 ]
                 
                 if any(tag in channel_name_lower for tag in exclude_tags):
@@ -355,23 +355,37 @@ try:
             if missing_padding:
                 clean_b64 += '=' * (4 - missing_padding)
                 
-            decrypted_json_str = base64.b64decode(clean_b64).decode('utf-8')
-            config_data = json.loads(decrypted_json_str)
-            
-            urls_list = config_data.get("urls", [])
+            try:
+                decrypted_json_str = base64.b64decode(clean_b64).decode('utf-8')
+                config_data = json.loads(decrypted_json_str)
+                urls_list = config_data.get("urls", [])
+            except Exception as dec_err:
+                print(f"   ❌ فشل فك ترميز Base64 لبيانات الإعدادات: {dec_err}")
+                urls_list = []
+                
             if urls_list:
                 # جلب رابط الـ M3U المباشر من السيرفر الفعّال حالياً
                 m3u_url = urls_list[0].get("url")
                 print(f"   📥 تم استخراج رابط البث المباشر الفعال لريان تيفي.")
                 
-                m3u_response = session.get(m3u_url, timeout=25)
+                # ترويسة مخصصة لتخطي حظر Cloudflare على السيرفر المستهدف
+                m3u_headers = {
+                    "User-Agent": "okhttp/5.0.0-alpha.2",
+                    "Accept-Encoding": "gzip",
+                    "Connection": "Keep-Alive"
+                }
+                
+                m3u_response = session.get(m3u_url, headers=m3u_headers, timeout=25)
+                print(f"   📡 كود حالة الاستجابة لسيرفر القنوات: {m3u_response.status_code}")
+                
                 if m3u_response.status_code == 200:
                     lines = m3u_response.text.splitlines()
+                    print(f"   📊 حجم ملف القنوات المستلم: {len(m3u_response.text)} حرف.")
                     seen_urls = set()
                     current_inf = None
                     matched_rayan_count = 0
                     
-                    # وسوم اللغات الأجنبية المستبعدة فوراً لقنوات beIN
+                    # وسوم اللغات الأجنبية المستبعدة فوراً لقنوات beIN لضمان العربية والفرنسية فقط
                     foreign_tags = [
                         "en:", "es:", "tr:", "us:", "uk:", "de:", "it:", "pl:", "ru:", "gr:", "ro:", "dk:", "hu:", "ph:", "bg:",
                         "[en]", "[es]", "[tr]", "[us]", "[uk]", "[de]", "[it]", "[pl]", "[ru]", "[gr]", "[ro]", "[dk]", "[hu]",
