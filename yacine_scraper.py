@@ -4,8 +4,6 @@ import json
 import time
 import os
 import re
-import hashlib
-import hmac
 import urllib.parse
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
@@ -14,14 +12,6 @@ from urllib3.util import Retry
 GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
-# --- إعدادات التمرير اليدوي المؤقت لقنوات Reezn TV ---
-# يرجى وضع التوقيع والزمن الطازجين عند التقاطهما مباشرة من HTTP Toolkit
-MANUAL_REEZN_SIG = "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f"  # ضع توقيع الرياضة الطازج هنا
-MANUAL_REEZN_TIME = "1783256939"  # ضع الرمز الزمني المقابل له هنا
-
-MANUAL_REEZN_SIG_CHANNELS = ""  # توقيع باقة القنوات العامة الطازج (اختياري)
-MANUAL_REEZN_TIME_CHANNELS = ""  # الرمز الزمني المقابل له (اختياري)
-
 # قائمة النطاقات المستقرة والفعالة لتطبيق ياسين تيفي
 YACINE_DOMAINS = [
     "https://def.yacinelive.com",
@@ -29,8 +19,7 @@ YACINE_DOMAINS = [
     "https://v31.yacinelive.com"
 ]
 
-FOUND_FORMULA = None
-
+# دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
 def decrypt_yacine(encrypted_data, header_t):
     base_key = "c!xZj+N9&G@Ev@vw"
     full_key = (base_key + header_t).encode('utf-8')
@@ -44,6 +33,7 @@ def decrypt_yacine(encrypted_data, header_t):
         print(f"Error decrypting Yacine: {e}")
         return None
 
+# إنشاء جلسة عمل مشتركة (Session) للحفاظ على الكوكيز وتفادي الحظر
 def create_session():
     session = requests.Session()
     retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
@@ -52,6 +42,7 @@ def create_session():
     session.mount('https://', adapter)
     return session
 
+# دالة للاتصال بسيرفر ياسين وتجربة النطاقات المستقرة وفك التشفير تلقائياً
 def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
     for domain in YACINE_DOMAINS:
         url = f"{domain}{endpoint_path}"
@@ -67,6 +58,7 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
             continue
     return None
 
+# دالة جلب رابط التوجيه (Redirect) لياسين تيفي
 def get_final_url(raw_url):
     browser_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
@@ -79,8 +71,10 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
+# دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
 def get_majed_dynamic_channels(session):
     timestamp = int(time.time() * 1000)
+    # استخدام بروتوكول HTTP العادي والمستقر الموثق في فحص الشبكة الخاص بك
     config_url = f"http://majed-koora.live/config.json?v={timestamp}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
@@ -100,6 +94,7 @@ def get_majed_dynamic_channels(session):
     
     return ["majedsports1"]
 
+# دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
 def extract_static_channels(m3u_content):
     lines = m3u_content.splitlines()
     static_lines = []
@@ -107,8 +102,7 @@ def extract_static_channels(m3u_content):
     
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
-        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live",
-        "server.reezntv.com", "reezntv", "staticdev9.workers.dev", "REEZN TV"
+        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live"
     ]
 
     for line in lines:
@@ -140,6 +134,7 @@ def extract_static_channels(m3u_content):
             
     return "\n".join(static_lines).strip()
 
+# دالة لفحص حالة بروكسي الباشا وكشف صفحات التحدي والحظر
 def check_basha_proxy_status(session):
     test_url = "http://live-albashatv.site/stream"
     try:
@@ -162,206 +157,6 @@ def check_basha_proxy_status(session):
     except Exception as e:
         print(f"⚠️ تم فحص البروكسي: فشل الاتصال ({e}).")
         return False
-
-def find_list_in_json(data):
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        for key in ["data", "channels", "sports", "categories", "streams", "list"]:
-            if key in data:
-                val = data[key]
-                if isinstance(val, list):
-                    return val
-                elif isinstance(val, dict):
-                    sub_list = find_list_in_json(val)
-                    if sub_list:
-                        return sub_list
-        for val in data.values():
-            if isinstance(val, list):
-                return val
-            elif isinstance(val, dict):
-                sub_list = find_list_in_json(val)
-                if sub_list:
-                    return sub_list
-    return []
-
-def find_hashing_formula():
-    global FOUND_FORMULA
-    
-    time_1 = "1783256939"
-    body_1_raw = '{"secret":"blaidyalah","date":"05_07_2026"}'
-    body_1_nl = '{"secret":"blaidyalah","date":"05_07_2026"}\n'
-    sig_1 = "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f"
-    
-    time_2 = "1783251653"
-    body_2_raw = '{"secret":"blaidyalah"}'
-    body_2_nl = '{"secret":"blaidyalah"}\n'
-    sig_2 = "dc2b63ba68b26969446821486d5cea4d18927fbb390d3f173863aaa999daebd2"
-    
-    test_secret = "blaidyalah"
-    test_client = "SecureNativeV2"
-    test_package = "com.bedevlab.reezn"
-    test_debug = "1"
-    
-    placeholders = ["{TIME}", "{BODY}", "{SECRET}", "{CLIENT}", "{PACKAGE}", "{DEBUG}"]
-    import itertools
-    
-    print("🔬 جاري فحص وتحليل خوارزمية تشفير السيرفر ذاتياً...")
-    
-    for r in range(1, len(placeholders) + 1):
-        for perm in itertools.permutations(placeholders, r):
-            for sep in ["", " ", "_", "-", ":", "/", "+"]:
-                for is_nl in [False, True]:
-                    b1 = body_1_nl if is_nl else body_1_raw
-                    b2 = body_2_nl if is_nl else body_2_raw
-                    
-                    for b1_variant, b2_variant in [
-                        (b1, b2), 
-                        (b1.strip(), b2.strip()), 
-                        (b1.replace(" ", ""), b2.replace(" ", ""))
-                    ]:
-                        s1 = sep.join([p.replace("{TIME}", time_1).replace("{BODY}", b1_variant).replace("{SECRET}", test_secret).replace("{CLIENT}", test_client).replace("{PACKAGE}", test_package).replace("{DEBUG}", test_debug) for p in perm])
-                        s2 = sep.join([p.replace("{TIME}", time_2).replace("{BODY}", b2_variant).replace("{SECRET}", test_secret).replace("{CLIENT}", test_client).replace("{PACKAGE}", test_package).replace("{DEBUG}", test_debug) for p in perm])
-                        
-                        h1 = hashlib.sha256(s1.encode('utf-8')).hexdigest()
-                        h2 = hashlib.sha256(s2.encode('utf-8')).hexdigest()
-                        
-                        if h1 == sig_1 and h2 == sig_2:
-                            FOUND_FORMULA = {"type": "sha256", "sep": sep, "order": perm, "newline": is_nl}
-                            print(f"🎉 تم كشف الخوارزمية بنجاح! نوع: SHA256، الترتيب: {perm}، الفاصل: '{sep}'")
-                            return
-                            
-                        m1 = hashlib.md5(s1.encode('utf-8')).hexdigest()
-                        m2 = hashlib.md5(s2.encode('utf-8')).hexdigest()
-                        if m1 == sig_1 and m2 == sig_2:
-                            FOUND_FORMULA = {"type": "md5", "sep": sep, "order": perm, "newline": is_nl}
-                            print(f"🎉 تم كشف الخوارزمية بنجاح! نوع: MD5، الترتيب: {perm}، الفاصل: '{sep}'")
-                            return
-
-    # تجربة خوارزمية HMAC-SHA256
-    for salt_key in [test_secret, test_client, test_package]:
-        for msg_template in ["{TIME}", "{BODY_RAW}", "{BODY_NL}", "{TIME}{BODY_RAW}", "{TIME}{BODY_NL}"]:
-            msg_1 = msg_template.replace("{TIME}", time_1).replace("{BODY_RAW}", body_1_raw).replace("{BODY_NL}", body_1_nl)
-            msg_2 = msg_template.replace("{TIME}", time_2).replace("{BODY_RAW}", body_2_raw).replace("{BODY_NL}", body_2_nl)
-            
-            h1 = hmac.new(salt_key.encode('utf-8'), msg_1.encode('utf-8'), hashlib.sha256).hexdigest()
-            h2 = hmac.new(salt_key.encode('utf-8'), msg_2.encode('utf-8'), hashlib.sha256).hexdigest()
-            if h1 == sig_1 and h2 == sig_2:
-                FOUND_FORMULA = {"type": "hmac_sha256", "salt_key": salt_key, "msg_template": msg_template}
-                print(f"🎉 تم كشف الخوارزمية بنجاح! نوع: HMAC-SHA256، المفتاح: {salt_key}")
-                return
-                
-    print("⚠️ لم يتم الوصول لصيغة الهاش ديناميكياً، سيتم استخدام التواقيع البديلة (التمرير اليدوي أو الثابت).")
-
-def get_signature_for_request(timestamp_str, body_str):
-    global FOUND_FORMULA
-    
-    if MANUAL_REEZN_SIG and MANUAL_REEZN_TIME:
-        if "date" in body_str:
-            return MANUAL_REEZN_SIG, MANUAL_REEZN_TIME
-        else:
-            return MANUAL_REEZN_SIG_CHANNELS or MANUAL_REEZN_SIG, MANUAL_REEZN_TIME_CHANNELS or MANUAL_REEZN_TIME
-
-    if not FOUND_FORMULA:
-        if "date" in body_str:
-            return "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f", "1783256939"
-        else:
-            return "dc2b63ba68b26969446821486d5cea4d18927fbb390d3f173863aaa999daebd2", "1783251653"
-            
-    test_secret = "blaidyalah"
-    test_client = "SecureNativeV2"
-    test_package = "com.bedevlab.reezn"
-    test_debug = "1"
-    
-    if FOUND_FORMULA["type"] in ["sha256", "md5"]:
-        sep = FOUND_FORMULA["sep"]
-        order = FOUND_FORMULA["order"]
-        parts = []
-        for p in order:
-            val = p.replace("{TIME}", timestamp_str).replace("{secret}", test_secret).replace("{date}", time.strftime("%d_%m_%Y")).replace("{client}", test_client).replace("{package}", test_package).replace("{debug}", test_debug).replace("{BODY}", body_str)
-            parts.append(val)
-        joined = sep.join(parts)
-        if FOUND_FORMULA["type"] == "sha256":
-            return hashlib.sha256(joined.encode('utf-8')).hexdigest(), timestamp_str
-        else:
-            return hashlib.md5(joined.encode('utf-8')).hexdigest(), timestamp_str
-            
-    elif FOUND_FORMULA["type"] == "hmac_sha256":
-        salt_key = FOUND_FORMULA["salt_key"]
-        msg_template = FOUND_FORMULA["msg_template"]
-        msg = msg_template.replace("{TIME}", timestamp_str).replace("{BODY_RAW}", body_str.strip()).replace("{BODY_NL}", body_str)
-        sig = hmac.new(salt_key.encode('utf-8'), msg.encode('utf-8'), hashlib.sha256).hexdigest()
-        return sig, timestamp_str
-        
-    return None, timestamp_str
-
-def get_reezn_dynamic_channels(session):
-    global FOUND_FORMULA
-    endpoints = [
-        "https://server.reezntv.com/api/v2/get_sports_db.php",
-        "https://server.reezntv.com/api/v2/get_channels_db.php"
-    ]
-    
-    current_time_str = str(int(time.time()))
-    current_date_str = time.strftime("%d_%m_%Y")
-    channels_found = []
-    
-    for url in endpoints:
-        if "get_sports_db.php" in url:
-            # عند استخدام التوقيع اليدوي، نثبّت صيغة الطلب للتاريخ الذي تم فيه توليد هذا التوقيع تحديداً لمنع التعارض
-            if MANUAL_REEZN_SIG and MANUAL_REEZN_TIME:
-                raw_data = '{"secret":"blaidyalah","date":"05_07_2026"}\n'
-                sig, req_time = MANUAL_REEZN_SIG, MANUAL_REEZN_TIME
-            elif FOUND_FORMULA:
-                raw_data = f'{{"secret":"blaidyalah","date":"{current_date_str}"}}\n'
-                sig, req_time = get_signature_for_request(current_time_str, raw_data)
-            else:
-                raw_data = '{"secret":"blaidyalah","date":"05_07_2026"}\n'
-                sig, req_time = "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f", "1783256939"
-        else:
-            raw_data = '{"secret":"blaidyalah"}'
-            if MANUAL_REEZN_SIG and MANUAL_REEZN_TIME:
-                sig, req_time = get_signature_for_request(current_time_str, raw_data)
-            elif FOUND_FORMULA:
-                sig, req_time = get_signature_for_request(current_time_str, raw_data)
-            else:
-                sig, req_time = "dc2b63ba68b26969446821486d5cea4d18927fbb390d3f173863aaa999daebd2", "1783251653"
-
-        headers = {
-            "Accept-Encoding": "gzip",
-            "Cache-Control": "no-cache",
-            "Connection": "Keep-Alive",
-            "Content-Type": "application/json; charset=utf-8",
-            "User-Agent": "okhttp/4.12.0",
-            "X-DEBUG-MODE": "1",
-            "X-Request-Signature": sig,
-            "X-Request-Time": req_time
-        }
-        
-        try:
-            response = session.post(url, data=raw_data, headers=headers, timeout=12)
-            print(f"📡 الاتصال بـ {url}")
-            print(f"   📊 كود استجابة السيرفر: {response.status_code}")
-            print(f"   💬 محتوى الاستجابة الخام: {response.text[:400]}") # طباعة تفاصيل الخطأ للمعاينة
-            
-            if response.status_code == 200:
-                data = response.json()
-                raw_list = find_list_in_json(data)
-                print(f"   ✔️ تم فك البيانات بنجاح، تحتوي على ({len(raw_list)}) قناة.")
-                
-                for ch in raw_list:
-                    if isinstance(ch, dict):
-                        name = ch.get("name") or ch.get("title") or ch.get("channel_title") or ch.get("channel_name") or ch.get("channel_title_ar")
-                        url_val = ch.get("url") or ch.get("link") or ch.get("stream") or ch.get("stream_url") or ch.get("channel_url") or ch.get("file")
-                        if name and url_val:
-                            channels_found.append({"name": name, "url": url_val})
-        except Exception as e:
-            print(f"   ⚠️ خطأ أثناء جلب القنوات من الرابط ({url}): {e}")
-            
-    return channels_found
-
-# تشغيل نظام الفحص والشفاء الذاتي للتواقيع قبل البدء في معالجة القنوات
-find_hashing_formula()
 
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
 print("📂 جاري جلب محتوى الـ Gist الحالي...")
@@ -402,6 +197,7 @@ live_content = ""
 timestamp = int(time.time() * 1000)
 
 for channel in active_majed_channels:
+    # استخدام بروتوكول HTTP المباشر لضمان عمل الرابط على كافة الشاشات وأجهزة الاستقبال
     live_url = f"http://majed-koora.live/stream.php?channel={channel}&file=stream.m3u8&v={timestamp}"
     display_name = channel.replace("majedsports", "Majed Sport ").title()
     
@@ -504,6 +300,7 @@ print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من ا
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
+# الفئات المستهدفة المستقرة (90 لجودة FHD، و 89 لجودة HD) لتفادي أي خطأ في مسميات الأقسام
 targets = {
     "/api/categories/90/channels": "FHD",
     "/api/categories/89/channels": "HD"
@@ -532,6 +329,7 @@ for category_endpoint, quality in targets.items():
             
             channel_name_lower = channel_name.lower() if channel_name else ""
             
+            # تصفية القنوات المستهدفة بالبحث باللغتين العربية والإنجليزية لضمان الشمولية
             is_target = (
                 "max" in channel_name_lower or 
                 "bein" in channel_name_lower or 
@@ -549,14 +347,17 @@ for category_endpoint, quality in targets.items():
             
             if detail_data and 'data' in detail_data:
                 streams = detail_data['data']
+                # استخراج جميع السيرفرات المتوفرة لهذه القناة بدلاً من الخيار الأول فقط
                 for stream_idx, stream in enumerate(streams):
                     raw_url = stream.get('url')
                     if not raw_url:
                         continue
                         
+                    # جلب مسمى السيرفر التلقائي من الـ API (مثل: 1، 3، HD، 5 إلخ)
                     server_label = stream.get('name', f"Server {stream_idx + 1}")
                     final_url = get_final_url(raw_url)
                     
+                    # تحويل روابط Redbee من mpd (DASH) إلى m3u8 (HLS) تلقائياً لضمان تشغيلها على كافة الأجهزة
                     if final_url and "/dash/.mpd" in final_url:
                         final_url = final_url.replace("/dash/.mpd", "/playlist.m3u8")
                     
@@ -568,50 +369,10 @@ for category_endpoint, quality in targets.items():
                     print(f"      ✔️ نجاح استخراج السيرفر: {server_label}")
             time.sleep(0.5)
 
-# 5. جلب وتنسيق باقة قنوات Reezn TV الجديدة (الفلترة لـ beIN Sports و beIN MAX فقط)
-print("\n🚀 جاري جلب وتصفية قنوات Reezn TV الجديدة...")
-reezn_separator = "# ==================== مجموعة قنوات REEZN TV ===================="
-
-reezn_raw_channels = get_reezn_dynamic_channels(session)
-reezn_content = ""
-seen_reezn_urls = set()
-matched_reezn_count = 0
-
-for ch in reezn_raw_channels:
-    ch_name = ch["name"]
-    raw_url = ch["url"]
-    
-    if not raw_url or raw_url in seen_reezn_urls:
-        continue
-        
-    ch_name_lower = ch_name.lower()
-    
-    is_bein_or_max = (
-        "bein" in ch_name_lower or
-        "max" in ch_name_lower or
-        "بين" in ch_name_lower or
-        "بي ان" in ch_name_lower or
-        "بي إن" in ch_name_lower or
-        "ماكس" in ch_name_lower
-    )
-    
-    if is_bein_or_max:
-        final_url = get_final_url(raw_url)
-        
-        if final_url and "/dash/.mpd" in final_url:
-            final_url = final_url.replace("/dash/.mpd", "/playlist.m3u8")
-            
-        reezn_content += f'#EXTINF:-1 tvg-logo="" group-title="REEZN TV", {ch_name}\n'
-        reezn_content += f'{final_url}\n'
-        seen_reezn_urls.add(raw_url)
-        matched_reezn_count += 1
-
-print(f"🎯 تم استخراج وتصفية ({matched_reezn_count}) قناة beIN و MAX من باقة Reezn TV بنجاح.")
-
 # دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
-final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n{reezn_separator}\n{reezn_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
+final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
 
-# 6. تحديث الـ Gist الخاص بك
+# 5. تحديث الـ Gist الخاص بك
 print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
 update_data = {
     "files": {
@@ -624,6 +385,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح!")
+    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة ونظيفة وجاهزة للعمل على الريسيفر.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
