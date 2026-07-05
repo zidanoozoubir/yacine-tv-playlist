@@ -220,8 +220,8 @@ def try_dynamic_reezn_request(session, url, raw_data):
                                 if name and url_val:
                                     channels_found.append({"name": name, "url": url_val})
                         return channels_found
-        except Exception:
-            continue
+            except Exception:
+                continue
     return []
 
 # دالة لجلب القنوات من سيرفر Reezn TV بالترويسات الرسمية الكاملة
@@ -285,7 +285,8 @@ static_clean = ""
 filename = "kz.m3u"
 
 try:
-    gist_response = requests.get(gist_api_url, gist_headers=gist_headers, timeout=15)
+    # تم تصحيح البارامتر هنا إلى headers ليعمل السكربت بنجاح في GitHub Actions
+    gist_response = requests.get(gist_api_url, headers=gist_headers, timeout=15)
     if gist_response.status_code == 200:
         gist_data = gist_response.json()
         filename = list(gist_data['files'].keys())[0]
