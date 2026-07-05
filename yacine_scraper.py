@@ -14,8 +14,8 @@ from urllib3.util import Retry
 GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
-# --- إعدادات التمرير اليدوي المؤقت لقنوات Reezn TV (عند الحاجة) ---
-# إذا انتهت صلاحية التواقيع الافتراضية، يمكنك وضع القيم الطازجة الملتقطة من HTTP Toolkit هنا لتشغيل السكربت فوراً
+# --- إعدادات التمرير اليدوي المؤقت لقنوات Reezn TV ---
+# يرجى وضع التوقيع والزمن الطازجين عند التقاطهما مباشرة من HTTP Toolkit
 MANUAL_REEZN_SIG = "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f"  # ضع توقيع الرياضة الطازج هنا
 MANUAL_REEZN_TIME = "1783256939"  # ضع الرمز الزمني المقابل له هنا
 
@@ -29,10 +29,8 @@ YACINE_DOMAINS = [
     "https://v31.yacinelive.com"
 ]
 
-# متغير عالمي لحفظ صيغة التوقيع المكتشفة ديناميكياً
 FOUND_FORMULA = None
 
-# دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
 def decrypt_yacine(encrypted_data, header_t):
     base_key = "c!xZj+N9&G@Ev@vw"
     full_key = (base_key + header_t).encode('utf-8')
@@ -46,7 +44,6 @@ def decrypt_yacine(encrypted_data, header_t):
         print(f"Error decrypting Yacine: {e}")
         return None
 
-# إنشاء جلسة عمل مشتركة (Session) للحفاظ على الكوكيز وتفادي الحظر
 def create_session():
     session = requests.Session()
     retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
@@ -55,7 +52,6 @@ def create_session():
     session.mount('https://', adapter)
     return session
 
-# دالة للاتصال بسيرفر ياسين وتجربة النطاقات المستقرة وفك التشفير تلقائياً
 def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
     for domain in YACINE_DOMAINS:
         url = f"{domain}{endpoint_path}"
@@ -71,7 +67,6 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
             continue
     return None
 
-# دالة جلب رابط التوجيه (Redirect) لياسين تيفي
 def get_final_url(raw_url):
     browser_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
@@ -84,7 +79,6 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
 def get_majed_dynamic_channels(session):
     timestamp = int(time.time() * 1000)
     config_url = f"http://majed-koora.live/config.json?v={timestamp}"
@@ -106,7 +100,6 @@ def get_majed_dynamic_channels(session):
     
     return ["majedsports1"]
 
-# دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
 def extract_static_channels(m3u_content):
     lines = m3u_content.splitlines()
     static_lines = []
@@ -147,7 +140,6 @@ def extract_static_channels(m3u_content):
             
     return "\n".join(static_lines).strip()
 
-# دالة لفحص حالة بروكسي الباشا وكشف صفحات التحدي والحظر
 def check_basha_proxy_status(session):
     test_url = "http://live-albashatv.site/stream"
     try:
@@ -171,7 +163,6 @@ def check_basha_proxy_status(session):
         print(f"⚠️ تم فحص البروكسي: فشل الاتصال ({e}).")
         return False
 
-# دالة ذكية للبحث عن مصفوفة القنوات داخل استجابة الـ JSON مهما كانت متداخلة
 def find_list_in_json(data):
     if isinstance(data, list):
         return data
@@ -194,17 +185,14 @@ def find_list_in_json(data):
                     return sub_list
     return []
 
-# تحليل واستنتاج معادلة التوقيع الرقمي تلقائياً عند التشغيل (Self-Healing Signature Engine)
 def find_hashing_formula():
     global FOUND_FORMULA
     
-    # عينة باقة الرياضة (Sports)
     time_1 = "1783256939"
     body_1_raw = '{"secret":"blaidyalah","date":"05_07_2026"}'
     body_1_nl = '{"secret":"blaidyalah","date":"05_07_2026"}\n'
     sig_1 = "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f"
     
-    # عينة باقة القنوات العامة (Channels)
     time_2 = "1783251653"
     body_2_raw = '{"secret":"blaidyalah"}'
     body_2_nl = '{"secret":"blaidyalah"}\n'
@@ -227,7 +215,6 @@ def find_hashing_formula():
                     b1 = body_1_nl if is_nl else body_1_raw
                     b2 = body_2_nl if is_nl else body_2_raw
                     
-                    # فحص التنسيقات المختلفة للـ JSON لتغطية المسافات المحتملة
                     for b1_variant, b2_variant in [
                         (b1, b2), 
                         (b1.strip(), b2.strip()), 
@@ -266,11 +253,9 @@ def find_hashing_formula():
                 
     print("⚠️ لم يتم الوصول لصيغة الهاش ديناميكياً، سيتم استخدام التواقيع البديلة (التمرير اليدوي أو الثابت).")
 
-# دالة لتوليد التوقيع الرقمي ديناميكياً بناءً على نتيجة الفحص الذاتي أو الارتداد للتمرير اليدوي
 def get_signature_for_request(timestamp_str, body_str):
     global FOUND_FORMULA
     
-    # التحقق أولاً مما إذا كان المستخدم قد مرر قيماً يدوية طازجة من HTTP Toolkit
     if MANUAL_REEZN_SIG and MANUAL_REEZN_TIME:
         if "date" in body_str:
             return MANUAL_REEZN_SIG, MANUAL_REEZN_TIME
@@ -278,7 +263,6 @@ def get_signature_for_request(timestamp_str, body_str):
             return MANUAL_REEZN_SIG_CHANNELS or MANUAL_REEZN_SIG, MANUAL_REEZN_TIME_CHANNELS or MANUAL_REEZN_TIME
 
     if not FOUND_FORMULA:
-        # نظام الارتداد الآمن للتواقيع الثابتة المسجلة
         if "date" in body_str:
             return "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f", "1783256939"
         else:
@@ -311,7 +295,6 @@ def get_signature_for_request(timestamp_str, body_str):
         
     return None, timestamp_str
 
-# دالة لجلب القنوات من سيرفر Reezn TV ديناميكياً بكلمة السر وترويسات التوقيع الرقمي
 def get_reezn_dynamic_channels(session):
     global FOUND_FORMULA
     endpoints = [
@@ -325,7 +308,11 @@ def get_reezn_dynamic_channels(session):
     
     for url in endpoints:
         if "get_sports_db.php" in url:
-            if FOUND_FORMULA or (MANUAL_REEZN_SIG and MANUAL_REEZN_TIME):
+            # عند استخدام التوقيع اليدوي، نثبّت صيغة الطلب للتاريخ الذي تم فيه توليد هذا التوقيع تحديداً لمنع التعارض
+            if MANUAL_REEZN_SIG and MANUAL_REEZN_TIME:
+                raw_data = '{"secret":"blaidyalah","date":"05_07_2026"}\n'
+                sig, req_time = MANUAL_REEZN_SIG, MANUAL_REEZN_TIME
+            elif FOUND_FORMULA:
                 raw_data = f'{{"secret":"blaidyalah","date":"{current_date_str}"}}\n'
                 sig, req_time = get_signature_for_request(current_time_str, raw_data)
             else:
@@ -333,12 +320,13 @@ def get_reezn_dynamic_channels(session):
                 sig, req_time = "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f", "1783256939"
         else:
             raw_data = '{"secret":"blaidyalah"}'
-            if FOUND_FORMULA or (MANUAL_REEZN_SIG and MANUAL_REEZN_TIME):
+            if MANUAL_REEZN_SIG and MANUAL_REEZN_TIME:
+                sig, req_time = get_signature_for_request(current_time_str, raw_data)
+            elif FOUND_FORMULA:
                 sig, req_time = get_signature_for_request(current_time_str, raw_data)
             else:
                 sig, req_time = "dc2b63ba68b26969446821486d5cea4d18927fbb390d3f173863aaa999daebd2", "1783251653"
 
-        # إجبار الترويسات على المطابقة الكاملة لتجنب صدور الـ ECONNRESET
         headers = {
             "Accept-Encoding": "gzip",
             "Cache-Control": "no-cache",
@@ -352,12 +340,14 @@ def get_reezn_dynamic_channels(session):
         
         try:
             response = session.post(url, data=raw_data, headers=headers, timeout=12)
-            print(f"📡 الاتصال بـ {url} - كود الحالة: {response.status_code}")
+            print(f"📡 الاتصال بـ {url}")
+            print(f"   📊 كود استجابة السيرفر: {response.status_code}")
+            print(f"   💬 محتوى الاستجابة الخام: {response.text[:400]}") # طباعة تفاصيل الخطأ للمعاينة
             
             if response.status_code == 200:
                 data = response.json()
                 raw_list = find_list_in_json(data)
-                print(f"   📊 تم جلب قاعدة البيانات بنجاح، تحتوي على ({len(raw_list)}) قناة.")
+                print(f"   ✔️ تم فك البيانات بنجاح، تحتوي على ({len(raw_list)}) قناة.")
                 
                 for ch in raw_list:
                     if isinstance(ch, dict):
@@ -365,8 +355,6 @@ def get_reezn_dynamic_channels(session):
                         url_val = ch.get("url") or ch.get("link") or ch.get("stream") or ch.get("stream_url") or ch.get("channel_url") or ch.get("file")
                         if name and url_val:
                             channels_found.append({"name": name, "url": url_val})
-            else:
-                print(f"   ⚠️ فشل الطلب بكود حالة: {response.status_code} (قد يكون التوقيع منتهي الصلاحية).")
         except Exception as e:
             print(f"   ⚠️ خطأ أثناء جلب القنوات من الرابط ({url}): {e}")
             
@@ -636,6 +624,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة ونظيفة وجاهزة للعمل على الريسيفر.")
+    print("🎉 تم التحديث بنجاح!")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
