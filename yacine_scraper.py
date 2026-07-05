@@ -5,6 +5,7 @@ import time
 import os
 import re
 import hashlib
+import hmac
 import urllib.parse
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
@@ -19,6 +20,9 @@ YACINE_DOMAINS = [
     "https://ver3.yacinelive.com",
     "https://v31.yacinelive.com"
 ]
+
+# متغير عالمي لحفظ صيغة التوقيع المكتشفة ديناميكياً
+FOUND_FORMULA = None
 
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
 def decrypt_yacine(encrypted_data, header_t):
@@ -183,78 +187,158 @@ def find_list_in_json(data):
                     return sub_list
     return []
 
-# نظام توليد وتجربة تواقيع أمنية ديناميكية لتجاوز جدار حماية السيرفر الزمني (Replay Protection Bypass)
-def try_dynamic_reezn_request(session, url, raw_data):
-    current_time_str = str(int(time.time()))
-    salt_options = ["blaidyalah", "SecureNativeV2", "ReeznApp/1.0", ""]
+# تحليل واستنتاج معادلة التوقيع الرقمي تلقائياً عند التشغيل استناداً للعينات الناجحة (Self-Healing Signature Engine)
+def find_hashing_formula():
+    global FOUND_FORMULA
     
-    for salt in salt_options:
-        sig1 = hashlib.sha256(f"{salt}{current_time_str}".encode('utf-8')).hexdigest()
-        sig2 = hashlib.sha256(f"{current_time_str}{salt}".encode('utf-8')).hexdigest()
-        sig3 = hashlib.sha256(f"{current_time_str}{salt}{raw_data}".encode('utf-8')).hexdigest()
+    # عينة باقة الرياضة (Sports)
+    time_1 = "1783256939"
+    body_1_raw = '{"secret":"blaidyalah","date":"05_07_2026"}'
+    body_1_nl = '{"secret":"blaidyalah","date":"05_07_2026"}\n'
+    sig_1 = "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f"
+    
+    # عينة باقة القنوات العامة (Channels)
+    time_2 = "1783251653"
+    body_2_raw = '{"secret":"blaidyalah"}'
+    body_2_nl = '{"secret":"blaidyalah"}\n'
+    sig_2 = "dc2b63ba68b26969446821486d5cea4d18927fbb390d3f173863aaa999daebd2"
+    
+    test_secret = "blaidyalah"
+    test_client = "SecureNativeV2"
+    test_package = "com.bedevlab.reezn"
+    test_debug = "1"
+    
+    placeholders = ["{TIME}", "{BODY}", "{SECRET}", "{CLIENT}", "{PACKAGE}", "{DEBUG}"]
+    import itertools
+    
+    print("🔬 جاري فحص وتحليل خوارزمية تشفير السيرفر ذاتياً...")
+    
+    # تجربة كافة توليفات المتغيرات للوصول للهاش المطابق تماماً للعينتين معاً
+    for r in range(1, len(placeholders) + 1):
+        for perm in itertools.permutations(placeholders, r):
+            for sep in ["", " ", "_", "-", ":", "/", "+"]:
+                # تجربة النص الخام والنص المحتوي على سطر جديد
+                for is_nl in [False, True]:
+                    b1 = body_1_nl if is_nl else body_1_raw
+                    b2 = body_2_nl if is_nl else body_2_raw
+                    
+                    s1 = sep.join([p.replace("{TIME}", time_1).replace("{BODY}", b1).replace("{SECRET}", test_secret).replace("{CLIENT}", test_client).replace("{PACKAGE}", test_package).replace("{DEBUG}", test_debug) for p in perm])
+                    s2 = sep.join([p.replace("{TIME}", time_2).replace("{BODY}", b2).replace("{SECRET}", test_secret).replace("{CLIENT}", test_client).replace("{PACKAGE}", test_package).replace("{DEBUG}", test_debug) for p in perm])
+                    
+                    h1 = hashlib.sha256(s1.encode('utf-8')).hexdigest()
+                    h2 = hashlib.sha256(s2.encode('utf-8')).hexdigest()
+                    
+                    if h1 == sig_1 and h2 == sig_2:
+                        FOUND_FORMULA = {"type": "sha256", "sep": sep, "order": perm, "newline": is_nl}
+                        print(f"🎉 تم كشف الخوارزمية بنجاح! نوع: SHA256، الترتيب: {perm}، الفاصل: '{sep}'")
+                        return
+                        
+                    m1 = hashlib.md5(s1.encode('utf-8')).hexdigest()
+                    m2 = hashlib.md5(s2.encode('utf-8')).hexdigest()
+                    if m1 == sig_1 and m2 == sig_2:
+                        FOUND_FORMULA = {"type": "md5", "sep": sep, "order": perm, "newline": is_nl}
+                        print(f"🎉 تم كشف الخوارزمية بنجاح! نوع: MD5، الترتيب: {perm}، الفاصل: '{sep}'")
+                        return
 
-        for signature in [sig1, sig2, sig3]:
-            headers = {
-                "Accept-Encoding": "gzip",
-                "Cache-Control": "no-cache",
-                "Connection": "close",
-                "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": "Mozilla/5.0 (Android; Mobile) ReeznApp/1.0",
-                "X-DEBUG-MODE": "1",
-                "X-Reezn-Client": "SecureNativeV2",
-                "X-Request-Signature": signature,
-                "X-Request-Time": current_time_str
-            }
-            try:
-                response = session.post(url, data=raw_data, headers=headers, timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    raw_list = find_list_in_json(data)
-                    if raw_list:
-                        print(f"   🎯 نجاح تجاوز التوقيع الرقمي ديناميكياً باستخدام الهاش الفرعي!")
-                        channels_found = []
-                        for ch in raw_list:
-                            if isinstance(ch, dict):
-                                name = ch.get("name") or ch.get("title") or ch.get("channel_title") or ch.get("channel_name") or ch.get("channel_title_ar")
-                                url_val = ch.get("url") or ch.get("link") or ch.get("stream") or ch.get("stream_url") or ch.get("channel_url") or ch.get("file")
-                                if name and url_val:
-                                    channels_found.append({"name": name, "url": url_val})
-                        return channels_found
-            except Exception:
-                continue
-    return []
+    # تجربة خوارزمية HMAC-SHA256
+    for salt_key in [test_secret, test_client, test_package]:
+        for msg_template in ["{TIME}", "{BODY_RAW}", "{BODY_NL}", "{TIME}{BODY_RAW}", "{TIME}{BODY_NL}"]:
+            msg_1 = msg_template.replace("{TIME}", time_1).replace("{BODY_RAW}", body_1_raw).replace("{BODY_NL}", body_1_nl)
+            msg_2 = msg_template.replace("{TIME}", time_2).replace("{BODY_RAW}", body_2_raw).replace("{BODY_NL}", body_2_nl)
+            
+            h1 = hmac.new(salt_key.encode('utf-8'), msg_1.encode('utf-8'), hashlib.sha256).hexdigest()
+            h2 = hmac.new(salt_key.encode('utf-8'), msg_2.encode('utf-8'), hashlib.sha256).hexdigest()
+            if h1 == sig_1 and h2 == sig_2:
+                FOUND_FORMULA = {"type": "hmac_sha256", "salt_key": salt_key, "msg_template": msg_template}
+                print(f"🎉 تم كشف الخوارزمية بنجاح! نوع: HMAC-SHA256، المفتاح: {salt_key}")
+                return
+                
+    print("⚠️ لم يتم الوصول لصيغة الهاش ديناميكياً، سيتم استخدام التواقيع الثابتة المستقرة كبديل آمن.")
 
-# دالة لجلب القنوات من سيرفر Reezn TV بالترويسات الرسمية الكاملة
+# دالة لتوليد التوقيع الرقمي ديناميكياً بناءً على نتيجة الفحص الذاتي أو الارتداد للتواقيع الثابتة كأمان بديل
+def get_signature_for_request(timestamp_str, body_str):
+    global FOUND_FORMULA
+    if not FOUND_FORMULA:
+        # نظام الارتداد الآمن للتواقيع الناجحة الملتقطة لتفادي أي خطأ
+        if "date" in body_str:
+            return "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f", "1783256939"
+        else:
+            return "dc2b63ba68b26969446821486d5cea4d18927fbb390d3f173863aaa999daebd2", "1783251653"
+            
+    test_secret = "blaidyalah"
+    test_client = "SecureNativeV2"
+    test_package = "com.bedevlab.reezn"
+    test_debug = "1"
+    
+    if FOUND_FORMULA["type"] in ["sha256", "md5"]:
+        sep = FOUND_FORMULA["sep"]
+        order = FOUND_FORMULA["order"]
+        parts = []
+        for p in order:
+            val = p.replace("{TIME}", timestamp_str).replace("{secret}", test_secret).replace("{date}", time.strftime("%d_%m_%Y")).replace("{client}", test_client).replace("{package}", test_package).replace("{debug}", test_debug).replace("{BODY}", body_str)
+            parts.append(val)
+        joined = sep.join(parts)
+        if FOUND_FORMULA["type"] == "sha256":
+            return hashlib.sha256(combination).hexdigest(), timestamp_str
+        else:
+            return hashlib.md5(joined.encode('utf-8')).hexdigest(), timestamp_str
+            
+    elif FOUND_FORMULA["type"] == "hmac_sha256":
+        salt_key = FOUND_FORMULA["salt_key"]
+        msg_template = FOUND_FORMULA["msg_template"]
+        msg = msg_template.replace("{TIME}", timestamp_str).replace("{BODY_RAW}", body_str.strip()).replace("{BODY_NL}", body_str)
+        sig = hmac.new(salt_key.encode('utf-8'), msg.encode('utf-8'), hashlib.sha256).hexdigest()
+        return sig, timestamp_str
+        
+    return None, timestamp_str
+
+# دالة لجلب القنوات من سيرفر Reezn TV ديناميكياً بكلمة السر وترويسات التوقيع الرقمي
 def get_reezn_dynamic_channels(session):
+    global FOUND_FORMULA
     endpoints = [
         "https://server.reezntv.com/api/v2/get_sports_db.php",
         "https://server.reezntv.com/api/v2/get_channels_db.php"
     ]
-    # محاكاة ترويسات التطبيق الحقيقي تماماً لتخطي جدار الحماية (الترويسات التي قمت بالتقاطها بنجاح)
-    headers = {
-        "Accept-Encoding": "gzip",
-        "Cache-Control": "no-cache",
-        "Connection": "close",
-        "Content-Type": "application/json; charset=utf-8",
-        "User-Agent": "Mozilla/5.0 (Android; Mobile) ReeznApp/1.0",
-        "X-DEBUG-MODE": "1",
-        "X-Reezn-Client": "SecureNativeV2",
-        "X-Request-Signature": "dc2b63ba68b26969446821486d5cea4d18927fbb390d3f173863aaa999daebd2",
-        "X-Request-Time": "1783251653"
-    }
-    # إرسال النص الخام بدون أي مسافات ليكون حجمه 23 بايت تماماً ومطابق للتوقيع الرقمي
-    raw_data = '{"secret":"blaidyalah"}'
+    
+    current_time_str = str(int(time.time()))
+    current_date_str = time.strftime("%d_%m_%Y")
     channels_found = []
     
     for url in endpoints:
+        # تجهيز محتوى الطلب والترويسات بناءً على تفعيل نظام الشفاء الذاتي
+        if "get_sports_db.php" in url:
+            if FOUND_FORMULA:
+                raw_data = f'{{"secret":"blaidyalah","date":"{current_date_str}"}}\n'
+                sig, req_time = get_signature_for_request(current_time_str, raw_data)
+            else:
+                raw_data = '{"secret":"blaidyalah","date":"05_07_2026"}\n'
+                sig, req_time = "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f", "1783256939"
+        else:
+            raw_data = '{"secret":"blaidyalah"}'
+            if FOUND_FORMULA:
+                sig, req_time = get_signature_for_request(current_time_str, raw_data)
+            else:
+                sig, req_time = "dc2b63ba68b26969446821486d5cea4d18927fbb390d3f173863aaa999daebd2", "1783251653"
+
+        headers = {
+            "Accept-Encoding": "gzip",
+            "Cache-Control": "no-cache",
+            "Connection": "Keep-Alive",
+            "Content-Type": "application/json; charset=utf-8",
+            "User-Agent": "okhttp/4.12.0",
+            "X-DEBUG-MODE": "1",
+            "X-Request-Signature": sig,
+            "X-Request-Time": req_time
+        }
+        
         try:
             response = session.post(url, data=raw_data, headers=headers, timeout=12)
-            print(f"📡 محاولة الاتصال بـ {url} - الحالة: {response.status_code}")
+            print(f"📡 الاتصال بـ {url} - كود الحالة: {response.status_code}")
             
             if response.status_code == 200:
                 data = response.json()
                 raw_list = find_list_in_json(data)
-                print(f"   📊 تم استلام قاعدة بيانات تحتوي على ({len(raw_list)}) قناة.")
+                print(f"   📊 تم جلب قاعدة البيانات بنجاح، تحتوي على ({len(raw_list)}) قناة.")
                 
                 for ch in raw_list:
                     if isinstance(ch, dict):
@@ -262,16 +346,13 @@ def get_reezn_dynamic_channels(session):
                         url_val = ch.get("url") or ch.get("link") or ch.get("stream") or ch.get("stream_url") or ch.get("channel_url") or ch.get("file")
                         if name and url_val:
                             channels_found.append({"name": name, "url": url_val})
-            else:
-                # في حال انتهاء صلاحية ترويسات التوقيع الثابتة، ننتقل فوراً لمحاولة التوليد الديناميكي
-                print(f"   ⚠️ السيرفر رفض التوقيع الثابت (كود: {response.status_code})، جاري تشغيل التوليد الديناميكي تلقائياً...")
-                dynamic_list = try_dynamic_reezn_request(session, url, raw_data)
-                if dynamic_list:
-                    channels_found.extend(dynamic_list)
         except Exception as e:
             print(f"   ⚠️ خطأ أثناء جلب القنوات من الرابط ({url}): {e}")
             
     return channels_found
+
+# تشغيل نظام الفحص والشفاء الذاتي للتواقيع قبل البدء في معالجة القنوات
+find_hashing_formula()
 
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
 print("📂 جاري جلب محتوى الـ Gist الحالي...")
@@ -285,7 +366,6 @@ static_clean = ""
 filename = "kz.m3u"
 
 try:
-    # تم تصحيح البارامتر هنا إلى headers ليعمل السكربت بنجاح في GitHub Actions
     gist_response = requests.get(gist_api_url, headers=gist_headers, timeout=15)
     if gist_response.status_code == 200:
         gist_data = gist_response.json()
