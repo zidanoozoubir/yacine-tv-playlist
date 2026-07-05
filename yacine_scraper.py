@@ -4,6 +4,7 @@ import json
 import time
 import os
 import re
+import hashlib
 import urllib.parse
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
@@ -159,12 +160,11 @@ def check_basha_proxy_status(session):
         print(f"⚠️ تم فحص البروكسي: فشل الاتصال ({e}).")
         return False
 
-# دالة ذكية للبحث الذاتي عن مصفوفة القنوات داخل أي هيكلية JSON مستلمة مهما كانت متداخلة
+# دالة ذكية للبحث عن مصفوفة القنوات داخل استجابة الـ JSON مهما كانت متداخلة
 def find_list_in_json(data):
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
-        # البحث في المفاتيح الشائعة أولاً لتسريع المعالجة
         for key in ["data", "channels", "sports", "categories", "streams", "list"]:
             if key in data:
                 val = data[key]
@@ -174,7 +174,6 @@ def find_list_in_json(data):
                     sub_list = find_list_in_json(val)
                     if sub_list:
                         return sub_list
-        # مسح شامل لكافة فروع الاستجابة في حال وجود هيكلية معقدة
         for val in data.values():
             if isinstance(val, list):
                 return val
@@ -184,42 +183,91 @@ def find_list_in_json(data):
                     return sub_list
     return []
 
-# دالة لجلب القنوات من سيرفر Reezn TV ديناميكياً بكلمة السر وترويسات التحقق الرسمية
+# نظام توليد وتجربة تواقيع أمنية ديناميكية لتجاوز جدار حماية السيرفر الزمني (Replay Protection Bypass)
+def try_dynamic_reezn_request(session, url, raw_data):
+    current_time_str = str(int(time.time()))
+    salt_options = ["blaidyalah", "SecureNativeV2", "ReeznApp/1.0", ""]
+    
+    for salt in salt_options:
+        sig1 = hashlib.sha256(f"{salt}{current_time_str}".encode('utf-8')).hexdigest()
+        sig2 = hashlib.sha256(f"{current_time_str}{salt}".encode('utf-8')).hexdigest()
+        sig3 = hashlib.sha256(f"{current_time_str}{salt}{raw_data}".encode('utf-8')).hexdigest()
+
+        for signature in [sig1, sig2, sig3]:
+            headers = {
+                "Accept-Encoding": "gzip",
+                "Cache-Control": "no-cache",
+                "Connection": "close",
+                "Content-Type": "application/json; charset=utf-8",
+                "User-Agent": "Mozilla/5.0 (Android; Mobile) ReeznApp/1.0",
+                "X-DEBUG-MODE": "1",
+                "X-Reezn-Client": "SecureNativeV2",
+                "X-Request-Signature": signature,
+                "X-Request-Time": current_time_str
+            }
+            try:
+                response = session.post(url, data=raw_data, headers=headers, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    raw_list = find_list_in_json(data)
+                    if raw_list:
+                        print(f"   🎯 نجاح تجاوز التوقيع الرقمي ديناميكياً باستخدام الهاش الفرعي!")
+                        channels_found = []
+                        for ch in raw_list:
+                            if isinstance(ch, dict):
+                                name = ch.get("name") or ch.get("title") or ch.get("channel_title") or ch.get("channel_name") or ch.get("channel_title_ar")
+                                url_val = ch.get("url") or ch.get("link") or ch.get("stream") or ch.get("stream_url") or ch.get("channel_url") or ch.get("file")
+                                if name and url_val:
+                                    channels_found.append({"name": name, "url": url_val})
+                        return channels_found
+        except Exception:
+            continue
+    return []
+
+# دالة لجلب القنوات من سيرفر Reezn TV بالترويسات الرسمية الكاملة
 def get_reezn_dynamic_channels(session):
     endpoints = [
         "https://server.reezntv.com/api/v2/get_sports_db.php",
         "https://server.reezntv.com/api/v2/get_channels_db.php"
     ]
-    # تطبيق ترويسات التحقق الرسمية للتطبيق لضمان عدم رفض السيرفر للطلب
+    # محاكاة ترويسات التطبيق الحقيقي تماماً لتخطي جدار الحماية (الترويسات التي قمت بالتقاطها بنجاح)
     headers = {
+        "Accept-Encoding": "gzip",
+        "Cache-Control": "no-cache",
+        "Connection": "close",
         "Content-Type": "application/json; charset=utf-8",
         "User-Agent": "Mozilla/5.0 (Android; Mobile) ReeznApp/1.0",
         "X-DEBUG-MODE": "1",
-        "X-Reezn-Client": "SecureNativeV2"
+        "X-Reezn-Client": "SecureNativeV2",
+        "X-Request-Signature": "dc2b63ba68b26969446821486d5cea4d18927fbb390d3f173863aaa999daebd2",
+        "X-Request-Time": "1783251653"
     }
-    payload = {"secret": "blaidyalah"}
+    # إرسال النص الخام بدون أي مسافات ليكون حجمه 23 بايت تماماً ومطابق للتوقيع الرقمي
+    raw_data = '{"secret":"blaidyalah"}'
     channels_found = []
     
     for url in endpoints:
         try:
-            response = session.post(url, json=payload, headers=headers, timeout=12)
-            print(f"📡 Reezn API Connection {url} - Status: {response.status_code}")
+            response = session.post(url, data=raw_data, headers=headers, timeout=12)
+            print(f"📡 محاولة الاتصال بـ {url} - الحالة: {response.status_code}")
             
             if response.status_code == 200:
                 data = response.json()
                 raw_list = find_list_in_json(data)
-                
                 print(f"   📊 تم استلام قاعدة بيانات تحتوي على ({len(raw_list)}) قناة.")
                 
                 for ch in raw_list:
                     if isinstance(ch, dict):
-                        # البحث المتعدد عن مفاتيح تسمية القنوات والروابط بمختلف الاحتمالات
                         name = ch.get("name") or ch.get("title") or ch.get("channel_title") or ch.get("channel_name") or ch.get("channel_title_ar")
                         url_val = ch.get("url") or ch.get("link") or ch.get("stream") or ch.get("stream_url") or ch.get("channel_url") or ch.get("file")
                         if name and url_val:
                             channels_found.append({"name": name, "url": url_val})
             else:
-                print(f"   ⚠️ استجابة سيرفر Reezn غير طبيعية: {response.text[:200]}")
+                # في حال انتهاء صلاحية ترويسات التوقيع الثابتة، ننتقل فوراً لمحاولة التوليد الديناميكي
+                print(f"   ⚠️ السيرفر رفض التوقيع الثابت (كود: {response.status_code})، جاري تشغيل التوليد الديناميكي تلقائياً...")
+                dynamic_list = try_dynamic_reezn_request(session, url, raw_data)
+                if dynamic_list:
+                    channels_found.extend(dynamic_list)
         except Exception as e:
             print(f"   ⚠️ خطأ أثناء جلب القنوات من الرابط ({url}): {e}")
             
@@ -237,7 +285,7 @@ static_clean = ""
 filename = "kz.m3u"
 
 try:
-    gist_response = requests.get(gist_api_url, headers=gist_headers, timeout=15)
+    gist_response = requests.get(gist_api_url, gist_headers=gist_headers, timeout=15)
     if gist_response.status_code == 200:
         gist_data = gist_response.json()
         filename = list(gist_data['files'].keys())[0]
@@ -453,7 +501,7 @@ for ch in reezn_raw_channels:
         
     ch_name_lower = ch_name.lower()
     
-    # فلترة شاملة وحاسمة جداً لجلب قنوات بي إن سبورت وبي إن ماكس بمختلف صياغات الكتابة العربية والانجليزية
+    # فلترة شاملة وحاسمة جداً لجميع طرق كتابة بي إن سبورت وبي إن ماكس باللغتين العربية والانجليزية لمنع سقوط القنوات
     is_bein_or_max = (
         "bein" in ch_name_lower or
         "max" in ch_name_lower or
