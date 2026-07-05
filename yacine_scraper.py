@@ -100,9 +100,11 @@ def extract_static_channels(m3u_content):
     static_lines = []
     current_channel_block = []
     
+    # تمت إضافة معرّفات باقة Reezn TV إلى قائمة الحظر لتجنب تكرارها عند تصفية القسم اليدوي
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
-        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live"
+        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live",
+        "server.reezntv.com", "reezntv", "staticdev9.workers.dev", "REEZN TV"
     ]
 
     for line in lines:
@@ -157,6 +159,46 @@ def check_basha_proxy_status(session):
     except Exception as e:
         print(f"⚠️ تم فحص البروكسي: فشل الاتصال ({e}).")
         return False
+
+# دالة لجلب القنوات من سيرفر Reezn TV ديناميكياً بكلمة السر المستخرجة
+def get_reezn_dynamic_channels(session):
+    endpoints = [
+        "https://server.reezntv.com/api/v2/get_sports_db.php",
+        "https://server.reezntv.com/api/v2/get_channels_db.php"
+    ]
+    headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "User-Agent": "Mozilla/5.0 (Android; Mobile) ReeznApp/1.0"
+    }
+    payload = {"secret": "blaidyalah"}
+    channels_found = []
+    
+    for url in endpoints:
+        try:
+            response = session.post(url, json=payload, headers=headers, timeout=12)
+            if response.status_code == 200:
+                data = response.json()
+                raw_list = []
+                if isinstance(data, list):
+                    raw_list = data
+                elif isinstance(data, dict):
+                    # البحث عن مصفوفة القنوات داخل القاموس لضمان استخلاصها بشكل متوافق
+                    for val in data.values():
+                        if isinstance(val, list):
+                            raw_list = val
+                            break
+                
+                for ch in raw_list:
+                    if isinstance(ch, dict):
+                        # مطابقة أسماء المفاتيح المحتملة للقنوات والروابط في السيرفر
+                        name = ch.get("name") or ch.get("title") or ch.get("channel_name")
+                        url_val = ch.get("url") or ch.get("link") or ch.get("stream") or ch.get("stream_url") or ch.get("file")
+                        if name and url_val:
+                            channels_found.append({"name": name, "url": url_val})
+        except Exception as e:
+            print(f"⚠️ خطأ أثناء جلب قنوات Reezn TV من الرابط ({url}): {e}")
+            
+    return channels_found
 
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
 print("📂 جاري جلب محتوى الـ Gist الحالي...")
@@ -369,10 +411,50 @@ for category_endpoint, quality in targets.items():
                     print(f"      ✔️ نجاح استخراج السيرفر: {server_label}")
             time.sleep(0.5)
 
-# دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
-final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
+# 5. جلب وتنسيق باقة قنوات Reezn TV الجديدة (الفلترة لـ beIN Sports و beIN MAX فقط)
+print("\n🚀 جاري جلب وتصفية قنوات Reezn TV الجديدة...")
+reezn_separator = "# ==================== مجموعة قنوات REEZN TV ===================="
 
-# 5. تحديث الـ Gist الخاص بك
+reezn_raw_channels = get_reezn_dynamic_channels(session)
+reezn_content = ""
+seen_reezn_urls = set()
+matched_reezn_count = 0
+
+for ch in reezn_raw_channels:
+    ch_name = ch["name"]
+    raw_url = ch["url"]
+    
+    if not raw_url or raw_url in seen_reezn_urls:
+        continue
+        
+    ch_name_lower = ch_name.lower()
+    
+    # فلترة صارمة جداً لجلب قنوات بي إن سبورت وبي إن ماكس فقط (باللغتين العربية والإنجليزية)
+    is_bein_or_max = (
+        "bein" in ch_name_lower or
+        "max" in ch_name_lower or
+        "بين" in ch_name_lower or
+        "ماكس" in ch_name_lower
+    )
+    
+    if is_bein_or_max:
+        final_url = get_final_url(raw_url)
+        
+        # تحويل روابط Redbee من mpd (DASH) إلى m3u8 (HLS) تلقائياً إن وجدت لزيادة التوافقية
+        if final_url and "/dash/.mpd" in final_url:
+            final_url = final_url.replace("/dash/.mpd", "/playlist.m3u8")
+            
+        reezn_content += f'#EXTINF:-1 tvg-logo="" group-title="REEZN TV", {ch_name}\n'
+        reezn_content += f'{final_url}\n'
+        seen_reezn_urls.add(raw_url)
+        matched_reezn_count += 1
+
+print(f"🎯 تم استخراج وتصفية ({matched_reezn_count}) قناة beIN و MAX من باقة Reezn TV بنجاح.")
+
+# دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
+final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n{reezn_separator}\n{reezn_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
+
+# 6. تحديث الـ Gist الخاص بك
 print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
 update_data = {
     "files": {
