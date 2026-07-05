@@ -14,6 +14,14 @@ from urllib3.util import Retry
 GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
+# --- إعدادات التمرير اليدوي المؤقت لقنوات Reezn TV (عند الحاجة) ---
+# إذا انتهت صلاحية التواقيع الافتراضية، يمكنك وضع القيم الطازجة الملتقطة من HTTP Toolkit هنا لتشغيل السكربت فوراً
+MANUAL_REEZN_SIG = "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f"  # ضع توقيع الرياضة الطازج هنا
+MANUAL_REEZN_TIME = "1783256939"  # ضع الرمز الزمني المقابل له هنا
+
+MANUAL_REEZN_SIG_CHANNELS = ""  # توقيع باقة القنوات العامة الطازج (اختياري)
+MANUAL_REEZN_TIME_CHANNELS = ""  # الرمز الزمني المقابل له (اختياري)
+
 # قائمة النطاقات المستقرة والفعالة لتطبيق ياسين تيفي
 YACINE_DOMAINS = [
     "https://def.yacinelive.com",
@@ -104,7 +112,6 @@ def extract_static_channels(m3u_content):
     static_lines = []
     current_channel_block = []
     
-    # استبعاد باقة Reezn TV من التخزين في القسم اليدوي لمنع التكرار
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live",
@@ -187,7 +194,7 @@ def find_list_in_json(data):
                     return sub_list
     return []
 
-# تحليل واستنتاج معادلة التوقيع الرقمي تلقائياً عند التشغيل استناداً للعينات الناجحة (Self-Healing Signature Engine)
+# تحليل واستنتاج معادلة التوقيع الرقمي تلقائياً عند التشغيل (Self-Healing Signature Engine)
 def find_hashing_formula():
     global FOUND_FORMULA
     
@@ -213,32 +220,36 @@ def find_hashing_formula():
     
     print("🔬 جاري فحص وتحليل خوارزمية تشفير السيرفر ذاتياً...")
     
-    # تجربة كافة توليفات المتغيرات للوصول للهاش المطابق تماماً للعينتين معاً
     for r in range(1, len(placeholders) + 1):
         for perm in itertools.permutations(placeholders, r):
             for sep in ["", " ", "_", "-", ":", "/", "+"]:
-                # تجربة النص الخام والنص المحتوي على سطر جديد
                 for is_nl in [False, True]:
                     b1 = body_1_nl if is_nl else body_1_raw
                     b2 = body_2_nl if is_nl else body_2_raw
                     
-                    s1 = sep.join([p.replace("{TIME}", time_1).replace("{BODY}", b1).replace("{SECRET}", test_secret).replace("{CLIENT}", test_client).replace("{PACKAGE}", test_package).replace("{DEBUG}", test_debug) for p in perm])
-                    s2 = sep.join([p.replace("{TIME}", time_2).replace("{BODY}", b2).replace("{SECRET}", test_secret).replace("{CLIENT}", test_client).replace("{PACKAGE}", test_package).replace("{DEBUG}", test_debug) for p in perm])
-                    
-                    h1 = hashlib.sha256(s1.encode('utf-8')).hexdigest()
-                    h2 = hashlib.sha256(s2.encode('utf-8')).hexdigest()
-                    
-                    if h1 == sig_1 and h2 == sig_2:
-                        FOUND_FORMULA = {"type": "sha256", "sep": sep, "order": perm, "newline": is_nl}
-                        print(f"🎉 تم كشف الخوارزمية بنجاح! نوع: SHA256، الترتيب: {perm}، الفاصل: '{sep}'")
-                        return
+                    # فحص التنسيقات المختلفة للـ JSON لتغطية المسافات المحتملة
+                    for b1_variant, b2_variant in [
+                        (b1, b2), 
+                        (b1.strip(), b2.strip()), 
+                        (b1.replace(" ", ""), b2.replace(" ", ""))
+                    ]:
+                        s1 = sep.join([p.replace("{TIME}", time_1).replace("{BODY}", b1_variant).replace("{SECRET}", test_secret).replace("{CLIENT}", test_client).replace("{PACKAGE}", test_package).replace("{DEBUG}", test_debug) for p in perm])
+                        s2 = sep.join([p.replace("{TIME}", time_2).replace("{BODY}", b2_variant).replace("{SECRET}", test_secret).replace("{CLIENT}", test_client).replace("{PACKAGE}", test_package).replace("{DEBUG}", test_debug) for p in perm])
                         
-                    m1 = hashlib.md5(s1.encode('utf-8')).hexdigest()
-                    m2 = hashlib.md5(s2.encode('utf-8')).hexdigest()
-                    if m1 == sig_1 and m2 == sig_2:
-                        FOUND_FORMULA = {"type": "md5", "sep": sep, "order": perm, "newline": is_nl}
-                        print(f"🎉 تم كشف الخوارزمية بنجاح! نوع: MD5، الترتيب: {perm}، الفاصل: '{sep}'")
-                        return
+                        h1 = hashlib.sha256(s1.encode('utf-8')).hexdigest()
+                        h2 = hashlib.sha256(s2.encode('utf-8')).hexdigest()
+                        
+                        if h1 == sig_1 and h2 == sig_2:
+                            FOUND_FORMULA = {"type": "sha256", "sep": sep, "order": perm, "newline": is_nl}
+                            print(f"🎉 تم كشف الخوارزمية بنجاح! نوع: SHA256، الترتيب: {perm}، الفاصل: '{sep}'")
+                            return
+                            
+                        m1 = hashlib.md5(s1.encode('utf-8')).hexdigest()
+                        m2 = hashlib.md5(s2.encode('utf-8')).hexdigest()
+                        if m1 == sig_1 and m2 == sig_2:
+                            FOUND_FORMULA = {"type": "md5", "sep": sep, "order": perm, "newline": is_nl}
+                            print(f"🎉 تم كشف الخوارزمية بنجاح! نوع: MD5، الترتيب: {perm}، الفاصل: '{sep}'")
+                            return
 
     # تجربة خوارزمية HMAC-SHA256
     for salt_key in [test_secret, test_client, test_package]:
@@ -253,13 +264,21 @@ def find_hashing_formula():
                 print(f"🎉 تم كشف الخوارزمية بنجاح! نوع: HMAC-SHA256، المفتاح: {salt_key}")
                 return
                 
-    print("⚠️ لم يتم الوصول لصيغة الهاش ديناميكياً، سيتم استخدام التواقيع الثابتة المستقرة كبديل آمن.")
+    print("⚠️ لم يتم الوصول لصيغة الهاش ديناميكياً، سيتم استخدام التواقيع البديلة (التمرير اليدوي أو الثابت).")
 
-# دالة لتوليد التوقيع الرقمي ديناميكياً بناءً على نتيجة الفحص الذاتي أو الارتداد للتواقيع الثابتة كأمان بديل
+# دالة لتوليد التوقيع الرقمي ديناميكياً بناءً على نتيجة الفحص الذاتي أو الارتداد للتمرير اليدوي
 def get_signature_for_request(timestamp_str, body_str):
     global FOUND_FORMULA
+    
+    # التحقق أولاً مما إذا كان المستخدم قد مرر قيماً يدوية طازجة من HTTP Toolkit
+    if MANUAL_REEZN_SIG and MANUAL_REEZN_TIME:
+        if "date" in body_str:
+            return MANUAL_REEZN_SIG, MANUAL_REEZN_TIME
+        else:
+            return MANUAL_REEZN_SIG_CHANNELS or MANUAL_REEZN_SIG, MANUAL_REEZN_TIME_CHANNELS or MANUAL_REEZN_TIME
+
     if not FOUND_FORMULA:
-        # نظام الارتداد الآمن للتواقيع الناجحة الملتقطة لتفادي أي خطأ
+        # نظام الارتداد الآمن للتواقيع الثابتة المسجلة
         if "date" in body_str:
             return "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f", "1783256939"
         else:
@@ -279,7 +298,7 @@ def get_signature_for_request(timestamp_str, body_str):
             parts.append(val)
         joined = sep.join(parts)
         if FOUND_FORMULA["type"] == "sha256":
-            return hashlib.sha256(combination).hexdigest(), timestamp_str
+            return hashlib.sha256(joined.encode('utf-8')).hexdigest(), timestamp_str
         else:
             return hashlib.md5(joined.encode('utf-8')).hexdigest(), timestamp_str
             
@@ -305,9 +324,8 @@ def get_reezn_dynamic_channels(session):
     channels_found = []
     
     for url in endpoints:
-        # تجهيز محتوى الطلب والترويسات بناءً على تفعيل نظام الشفاء الذاتي
         if "get_sports_db.php" in url:
-            if FOUND_FORMULA:
+            if FOUND_FORMULA or (MANUAL_REEZN_SIG and MANUAL_REEZN_TIME):
                 raw_data = f'{{"secret":"blaidyalah","date":"{current_date_str}"}}\n'
                 sig, req_time = get_signature_for_request(current_time_str, raw_data)
             else:
@@ -315,11 +333,12 @@ def get_reezn_dynamic_channels(session):
                 sig, req_time = "ba571e3a4bea773a696897cdd96a26d123e4ada84ed18a4220ac603394838e1f", "1783256939"
         else:
             raw_data = '{"secret":"blaidyalah"}'
-            if FOUND_FORMULA:
+            if FOUND_FORMULA or (MANUAL_REEZN_SIG and MANUAL_REEZN_TIME):
                 sig, req_time = get_signature_for_request(current_time_str, raw_data)
             else:
                 sig, req_time = "dc2b63ba68b26969446821486d5cea4d18927fbb390d3f173863aaa999daebd2", "1783251653"
 
+        # إجبار الترويسات على المطابقة الكاملة لتجنب صدور الـ ECONNRESET
         headers = {
             "Accept-Encoding": "gzip",
             "Cache-Control": "no-cache",
@@ -346,6 +365,8 @@ def get_reezn_dynamic_channels(session):
                         url_val = ch.get("url") or ch.get("link") or ch.get("stream") or ch.get("stream_url") or ch.get("channel_url") or ch.get("file")
                         if name and url_val:
                             channels_found.append({"name": name, "url": url_val})
+            else:
+                print(f"   ⚠️ فشل الطلب بكود حالة: {response.status_code} (قد يكون التوقيع منتهي الصلاحية).")
         except Exception as e:
             print(f"   ⚠️ خطأ أثناء جلب القنوات من الرابط ({url}): {e}")
             
@@ -495,7 +516,6 @@ print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من ا
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
-# الفئات المستهدفة المستقرة (90 لجودة FHD، و 89 لجودة HD) لتفادي أي خطأ في مسميات الأقسام
 targets = {
     "/api/categories/90/channels": "FHD",
     "/api/categories/89/channels": "HD"
@@ -524,7 +544,6 @@ for category_endpoint, quality in targets.items():
             
             channel_name_lower = channel_name.lower() if channel_name else ""
             
-            # تصفية القنوات المستهدفة بالبحث باللغتين العربية والإنجليزية لضمان الشمولية
             is_target = (
                 "max" in channel_name_lower or 
                 "bein" in channel_name_lower or 
@@ -542,17 +561,14 @@ for category_endpoint, quality in targets.items():
             
             if detail_data and 'data' in detail_data:
                 streams = detail_data['data']
-                # استخراج جميع السيرفرات المتوفرة لهذه القناة بدلاً من الخيار الأول فقط
                 for stream_idx, stream in enumerate(streams):
                     raw_url = stream.get('url')
                     if not raw_url:
                         continue
                         
-                    # جلب مسمى السيرفر التلقائي من الـ API (مثل: 1، 3، HD، 5 إلخ)
                     server_label = stream.get('name', f"Server {stream_idx + 1}")
                     final_url = get_final_url(raw_url)
                     
-                    # تحويل روابط Redbee من mpd (DASH) إلى m3u8 (HLS) تلقائياً لضمان تشغيلها على كافة الأجهزة
                     if final_url and "/dash/.mpd" in final_url:
                         final_url = final_url.replace("/dash/.mpd", "/playlist.m3u8")
                     
@@ -582,7 +598,6 @@ for ch in reezn_raw_channels:
         
     ch_name_lower = ch_name.lower()
     
-    # فلترة شاملة وحاسمة جداً لجميع طرق كتابة بي إن سبورت وبي إن ماكس باللغتين العربية والانجليزية لمنع سقوط القنوات
     is_bein_or_max = (
         "bein" in ch_name_lower or
         "max" in ch_name_lower or
@@ -595,7 +610,6 @@ for ch in reezn_raw_channels:
     if is_bein_or_max:
         final_url = get_final_url(raw_url)
         
-        # تحويل روابط Redbee من mpd (DASH) إلى m3u8 (HLS) تلقائياً إن وجدت لزيادة التوافقية
         if final_url and "/dash/.mpd" in final_url:
             final_url = final_url.replace("/dash/.mpd", "/playlist.m3u8")
             
