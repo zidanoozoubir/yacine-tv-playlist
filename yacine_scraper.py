@@ -74,7 +74,6 @@ def get_final_url(raw_url):
 # دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
 def get_majed_dynamic_channels(session):
     timestamp = int(time.time() * 1000)
-    # استخدام بروتوكول HTTP العادي والمستقر الموثق في فحص الشبكة الخاص بك
     config_url = f"http://majed-koora.live/config.json?v={timestamp}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
@@ -100,7 +99,7 @@ def extract_static_channels(m3u_content):
     static_lines = []
     current_channel_block = []
     
-    # تمت إضافة معرّفات باقة Reezn TV إلى قائمة الحظر لتجنب تكرارها عند تصفية القسم اليدوي
+    # استبعاد باقة Reezn TV من التخزين في القسم اليدوي لمنع التكرار
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live",
@@ -160,15 +159,43 @@ def check_basha_proxy_status(session):
         print(f"⚠️ تم فحص البروكسي: فشل الاتصال ({e}).")
         return False
 
-# دالة لجلب القنوات من سيرفر Reezn TV ديناميكياً بكلمة السر المستخرجة
+# دالة ذكية للبحث الذاتي عن مصفوفة القنوات داخل أي هيكلية JSON مستلمة مهما كانت متداخلة
+def find_list_in_json(data):
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        # البحث في المفاتيح الشائعة أولاً لتسريع المعالجة
+        for key in ["data", "channels", "sports", "categories", "streams", "list"]:
+            if key in data:
+                val = data[key]
+                if isinstance(val, list):
+                    return val
+                elif isinstance(val, dict):
+                    sub_list = find_list_in_json(val)
+                    if sub_list:
+                        return sub_list
+        # مسح شامل لكافة فروع الاستجابة في حال وجود هيكلية معقدة
+        for val in data.values():
+            if isinstance(val, list):
+                return val
+            elif isinstance(val, dict):
+                sub_list = find_list_in_json(val)
+                if sub_list:
+                    return sub_list
+    return []
+
+# دالة لجلب القنوات من سيرفر Reezn TV ديناميكياً بكلمة السر وترويسات التحقق الرسمية
 def get_reezn_dynamic_channels(session):
     endpoints = [
         "https://server.reezntv.com/api/v2/get_sports_db.php",
         "https://server.reezntv.com/api/v2/get_channels_db.php"
     ]
+    # تطبيق ترويسات التحقق الرسمية للتطبيق لضمان عدم رفض السيرفر للطلب
     headers = {
         "Content-Type": "application/json; charset=utf-8",
-        "User-Agent": "Mozilla/5.0 (Android; Mobile) ReeznApp/1.0"
+        "User-Agent": "Mozilla/5.0 (Android; Mobile) ReeznApp/1.0",
+        "X-DEBUG-MODE": "1",
+        "X-Reezn-Client": "SecureNativeV2"
     }
     payload = {"secret": "blaidyalah"}
     channels_found = []
@@ -176,27 +203,25 @@ def get_reezn_dynamic_channels(session):
     for url in endpoints:
         try:
             response = session.post(url, json=payload, headers=headers, timeout=12)
+            print(f"📡 Reezn API Connection {url} - Status: {response.status_code}")
+            
             if response.status_code == 200:
                 data = response.json()
-                raw_list = []
-                if isinstance(data, list):
-                    raw_list = data
-                elif isinstance(data, dict):
-                    # البحث عن مصفوفة القنوات داخل القاموس لضمان استخلاصها بشكل متوافق
-                    for val in data.values():
-                        if isinstance(val, list):
-                            raw_list = val
-                            break
+                raw_list = find_list_in_json(data)
+                
+                print(f"   📊 تم استلام قاعدة بيانات تحتوي على ({len(raw_list)}) قناة.")
                 
                 for ch in raw_list:
                     if isinstance(ch, dict):
-                        # مطابقة أسماء المفاتيح المحتملة للقنوات والروابط في السيرفر
-                        name = ch.get("name") or ch.get("title") or ch.get("channel_name")
-                        url_val = ch.get("url") or ch.get("link") or ch.get("stream") or ch.get("stream_url") or ch.get("file")
+                        # البحث المتعدد عن مفاتيح تسمية القنوات والروابط بمختلف الاحتمالات
+                        name = ch.get("name") or ch.get("title") or ch.get("channel_title") or ch.get("channel_name") or ch.get("channel_title_ar")
+                        url_val = ch.get("url") or ch.get("link") or ch.get("stream") or ch.get("stream_url") or ch.get("channel_url") or ch.get("file")
                         if name and url_val:
                             channels_found.append({"name": name, "url": url_val})
+            else:
+                print(f"   ⚠️ استجابة سيرفر Reezn غير طبيعية: {response.text[:200]}")
         except Exception as e:
-            print(f"⚠️ خطأ أثناء جلب قنوات Reezn TV من الرابط ({url}): {e}")
+            print(f"   ⚠️ خطأ أثناء جلب القنوات من الرابط ({url}): {e}")
             
     return channels_found
 
@@ -239,7 +264,6 @@ live_content = ""
 timestamp = int(time.time() * 1000)
 
 for channel in active_majed_channels:
-    # استخدام بروتوكول HTTP المباشر لضمان عمل الرابط على كافة الشاشات وأجهزة الاستقبال
     live_url = f"http://majed-koora.live/stream.php?channel={channel}&file=stream.m3u8&v={timestamp}"
     display_name = channel.replace("majedsports", "Majed Sport ").title()
     
@@ -429,11 +453,13 @@ for ch in reezn_raw_channels:
         
     ch_name_lower = ch_name.lower()
     
-    # فلترة صارمة جداً لجلب قنوات بي إن سبورت وبي إن ماكس فقط (باللغتين العربية والإنجليزية)
+    # فلترة شاملة وحاسمة جداً لجلب قنوات بي إن سبورت وبي إن ماكس بمختلف صياغات الكتابة العربية والانجليزية
     is_bein_or_max = (
         "bein" in ch_name_lower or
         "max" in ch_name_lower or
         "بين" in ch_name_lower or
+        "بي ان" in ch_name_lower or
+        "بي إن" in ch_name_lower or
         "ماكس" in ch_name_lower
     )
     
