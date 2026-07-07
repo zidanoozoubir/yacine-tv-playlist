@@ -215,35 +215,26 @@ def aes_cbc_encrypt(data, key_bytes, iv_bytes):
 
 def aes_cbc_decrypt(data, key_bytes, iv_bytes):
     if not data or len(data) % 16 != 0:
+        return b"" # حماية من خطأ bytearray إذا كانت البيانات غير مشفرة أو ناقصة
+        
+    round_keys = key_expansion(key_bytes)
+    plaintext = bytearray()
+    prev = iv_bytes
+    for i in range(0, len(data), 16):
+        block = data[i:i+16]
+        decrypted = aes_decrypt_block(block, round_keys)
+        xored = bytes([decrypted[j] ^ prev[j] for j in range(16)])
+        plaintext.extend(xored)
+        prev = block
+        
+    if not plaintext:
         return b""
-    try:
-        round_keys = key_expansion(key_bytes)
-        plaintext = bytearray()
-        prev = iv_bytes
-        for i in range(0, len(data), 16):
-            block = data[i:i+16]
-            if len(block) < 16:
-                break
-            decrypted = aes_decrypt_block(block, round_keys)
-            xored = bytes([decrypted[j] ^ prev[j] for j in range(16)])
-            plaintext.extend(xored)
-            prev = block
-            
-        if not plaintext:
-            return b""
-            
-        pad_len = plaintext[-1]
-        if pad_len < 1 or pad_len > 16:
-            return bytes(plaintext)
-            
-        # التحقق من صحة حشو PKCS#7 لمنع مشاكل الفهرس خارج الحدود
-        for b in plaintext[-pad_len:]:
-            if b != pad_len:
-                return bytes(plaintext)
-                
-        return bytes(plaintext[:-pad_len])
-    except Exception:
-        return b""
+        
+    pad_len = plaintext[-1]
+    if pad_len < 1 or pad_len > 16:
+        return bytes(plaintext) # حماية إضافية للـ Padding
+        
+    return bytes(plaintext[:-pad_len])
 
 # ==================== دوال تشفير وفك تشفير دراما لايف ====================
 DRAMA_KEY = b"0123456789abcdef"
@@ -258,54 +249,39 @@ def drama_encrypt(data_str):
     return f"{encrypted_b64}:{iv_b64}"
 
 def drama_decrypt(encrypted_str):
-    if not encrypted_str:
-        return ""
-    
-    # فحص أولي: إذا كان الرد عبارة عن JSON أو HTML صريح، نتجنب محاولة فك تشفيره
-    trimmed = encrypted_str.strip()
-    if trimmed.startswith("{") or trimmed.startswith("[") or trimmed.startswith("<"):
-        return trimmed
-
     try:
         if ":" in encrypted_str:
             parts = encrypted_str.split(":")
             encrypted_b64 = parts[0]
             iv_b64 = parts[1]
+            
+            # إصلاح الـ Padding للـ Base64 إن كان ناقصاً
+            iv_b64 += "=" * ((4 - len(iv_b64) % 4) % 4)
             iv_bytes = base64.b64decode(iv_b64)
         else:
             encrypted_b64 = encrypted_str
             iv_bytes = DRAMA_DEFAULT_IV
             
-        encrypted_bytes = base64.b64decode(encrypted_b64)
+        encrypted_b64 = encrypted_b64.strip()
+        encrypted_b64 += "=" * ((4 - len(encrypted_b64) % 4) % 4)
         
-        if len(iv_bytes) != 16:
-            iv_bytes = DRAMA_DEFAULT_IV
-            
+        encrypted_bytes = base64.b64decode(encrypted_b64)
         decrypted = aes_cbc_decrypt(encrypted_bytes, DRAMA_KEY, iv_bytes)
-        if not decrypted:
-            return ""
         return decrypted.decode('utf-8', errors='ignore')
     except Exception as e:
-        print(f"⚠️ فشل فك التشفير التلقائي: {e}")
         return ""
 
 # دالة مطابقة القنوات المطلوبة من دراما لايف بدقة متناهية
 def is_drama_target(channel_name):
     name_lower = channel_name.lower()
     
-    # 1. قنوات الفجر
     if "fajer" in name_lower or "fajr" in name_lower or "الفجر" in name_lower:
         return "Al Fajer"
-        
-    # 2. الألوان الرياضية
     if "alwan" in name_lower or "الوان" in name_lower or "ألوان" in name_lower:
         return "Alwan Sports"
-
-    # 3. بيين سبورت ماكس
     if "max" in name_lower or "ماكس" in name_lower:
         return "beIN Sports Max"
     
-    # 4. بيين سبورت الفرنسية أو العربية
     is_bein = "bein" in name_lower or "بي ان" in name_lower or "بين" in name_lower
     is_french = "fr" in name_lower or "french" in name_lower or "fr:" in name_lower or "fr " in name_lower or "(fr)" in name_lower or "[fr]" in name_lower or "france" in name_lower
     
@@ -352,7 +328,6 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
                     if decrypted_json_str:
                         return json.loads(decrypted_json_str)
         except Exception as e:
-            print(f"⚠️ فشل النطاق {domain} بسبب: {e}")
             continue
     return None
 
@@ -384,11 +359,9 @@ def get_majed_dynamic_channels(session):
             channels = [c for c in found if "koora" not in c.lower() and "live" not in c.lower()]
             if channels:
                 unique_channels = list(dict.fromkeys(channels))
-                print(f"🔍 تم اكتشاف القنوات النشطة من ملف الإعدادات: {unique_channels}")
                 return unique_channels
     except Exception as e:
-        print(f"⚠️ فشل جلب ملف الإعدادات config.json من ماجد سبورت: {e}")
-    
+        pass
     return ["majedsports1"]
 
 # دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
@@ -399,7 +372,7 @@ def extract_static_channels(m3u_content):
     
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
-        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live"
+        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "DRAMA LIVE"
     ]
 
     for line in lines:
@@ -557,11 +530,9 @@ try:
             f'{live_url}\n'
         )
 except Exception as e:
-    print(f"⚠️ خطأ أثناء تحديث باقة LIVE: {e}")
+    pass
 
-# تعويض وقائي ذكي لباقة LIVE
 if not live_content.strip() and prev_live.strip():
-    print("🛡️ فشل جلب باقة LIVE، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     live_content = prev_live
 
 
@@ -579,10 +550,8 @@ use_basha_proxy = check_basha_proxy_status(session)
 basha_payloads = ["method=o6&event=view", "method=o2&event=view"]
 basha_content = ""
 
-# فصل قنوات الأطفال لتظهر في المقدمة دائماً
 kids_channels_list = []
 regular_channels_list = []
-
 seen_basha_urls = set() 
 matched_count = 0
 
@@ -612,7 +581,6 @@ for payload in basha_payloads:
                 if any(tag in channel_name_lower for tag in exclude_tags):
                     continue
                 
-                # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلوبة أولاً
                 kids_match = matches_kids(channel_name)
                 if kids_match:
                     if use_basha_proxy:
@@ -631,9 +599,7 @@ for payload in basha_payloads:
                     matched_count += 1
                     continue
                 
-                # وإلا نتابع تصفية القنوات العادية والـ Premium الأخرى
                 is_bein = "bein" in channel_name_lower
-                
                 is_arabic_premium = False
                 premium_keywords = [
                     "osn", "netflix", "hbo", "amazon", "vip", "shahid", 
@@ -678,14 +644,11 @@ for payload in basha_payloads:
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
     except Exception as e:
-        print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
+        pass
 
-# دمج باقة الأطفال في مقدمة باقة الباشا تيفي تليها القنوات العادية الأخرى
 basha_content = "".join(kids_channels_list) + "".join(regular_channels_list)
 
-# تعويض وقائي ذكي لباقة الباشا تيفي في حال فشل الاتصال المؤقت
 if not basha_content.strip() and prev_basha.strip():
-    print("🛡️ فشل جلب باقة الباشا ديناميكياً، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     basha_content = prev_basha
 else:
     print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح (بما في ذلك قنوات الأطفال بالمقدمة).")
@@ -695,7 +658,6 @@ else:
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
-# الفئات المستهدفة: 90 لجودة FHD، و 89 لجودة HD، و 91 لجودة SD المنخفضة
 targets = {
     "/api/categories/90/channels": "FHD",
     "/api/categories/89/channels": "HD",
@@ -709,7 +671,6 @@ yacine_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
-# تصحيح الـ User-Agent وإعداد ترويسات الحماية
 ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 referer_value = "https://re.ycn-redirect.com/"
 origin_value = "https://re.ycn-redirect.com"
@@ -722,7 +683,6 @@ for category_endpoint, quality in targets.items():
     if channels_data and 'data' in channels_data:
         channels_list = channels_data['data']
         
-        # 1. تصفية قنوات BEIN سبورت وماكس المستهدفة أولاً
         filtered_channels = []
         for channel in channels_list:
             channel_name = channel.get('name') or ""
@@ -738,14 +698,12 @@ for category_endpoint, quality in targets.items():
             if is_target:
                 filtered_channels.append(channel)
                 
-        # 2. ترتيب القنوات تصاعدياً ورقمياً لضمان الفرز من 1 إلى 5 بشكل منظم
         def extract_number(name):
             nums = re.findall(r'\d+', name)
             return int(nums[0]) if nums else 999
             
         filtered_channels.sort(key=lambda x: extract_number(x.get('name', '')))
         
-        # 3. البدء في استخراج الروابط وتصفية سيرفرات الـ DRM غير الشغالة
         for index, channel in enumerate(filtered_channels):
             channel_name = channel.get('name')
             channel_id = channel.get('id')
@@ -757,26 +715,21 @@ for category_endpoint, quality in targets.items():
             if detail_data and 'data' in detail_data:
                 streams = detail_data['data']
                 
-                # تصفية وفلترة السيرفرات الصالحة للريسيفر و VLC (استبعاد ملفات .mpd ومسارات cenc المحمية)
                 valid_urls = []
                 for stream in streams:
                     raw_url = stream.get('url')
                     if not raw_url:
                         continue
                     
-                    # تحويل روابط Redbee من mpd إلى m3u8 تلقائياً لضمان التوافق
                     if "/dash/.mpd" in raw_url:
                         raw_url = raw_url.replace("/dash/.mpd", "/playlist.m3u8")
                         
-                    # استبعاد روابط DASH / DRM المشفرة بنظام Widevine لأنها مخصصة فقط لتطبيق ياسين وتتطلب مشغل مشفر
                     if ".mpd" in raw_url.lower() or "cenc" in raw_url.lower() or "/dash/" in raw_url.lower():
                         continue
                         
                     valid_urls.append(raw_url)
                 
-                # كتابة السيرفرات بالأسماء والتنسيق المرتب المطلوب
                 for stream_idx, final_url in enumerate(valid_urls):
-                    # التسمية النظيفة: السيرفر الأول يحمل اسم القناة مباشرة، والسيرفرات التالية يكتب بجانبها (S2) ثم (S3)...
                     if stream_idx == 0:
                         display_name = f"{channel_name} {quality}"
                     else:
@@ -784,7 +737,6 @@ for category_endpoint, quality in targets.items():
                         
                     final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}&Origin={origin_value}"
                     
-                    # كتابة ترويسة EXTVLCOPT القياسية وتذييل الـ Pipe لتعمل القنوات بنسبة 100% على كافة الأجهزة
                     yacine_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
                     yacine_content += f'#EXTVLCOPT:http-user-agent={ua_value}\n'
                     yacine_content += f'#EXTVLCOPT:http-referrer={referer_value}\n'
@@ -792,12 +744,9 @@ for category_endpoint, quality in targets.items():
                     yacine_content += f'{final_url_with_headers}\n'
                     print(f"      ✔️ نجاح استخراج السيرفر: {display_name}")
             
-            # تأخير عشوائي ذكي (Jitter) يتراوح بين 0.4 و 1.2 ثانية لتفادي كشف السكربت كـ Bot أو حظر الـ IP
             time.sleep(random.uniform(0.4, 1.2))
 
-# تعويض وقائي ذكي لباقة ياسين تيفي
 if not yacine_content.strip() and prev_yacine.strip():
-    print("🛡️ فشل جلب باقة ياسين تيفي، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     yacine_content = prev_yacine
 
 
@@ -805,15 +754,13 @@ if not yacine_content.strip() and prev_yacine.strip():
 print("\n🚀 جاري جلب قنوات دراما لايف (Drama Live)...")
 drama_separator = "# ==================== مجموعة قنوات DRAMA LIVE ===================="
 
-# قائمة الفئات المطلوبة في دراما لايف (الرياضية والعربية لشمول الفجر والألوان)
 drama_topics = ["sport", "arabic"]
 drama_content = ""
 seen_drama_urls = set()
 drama_matched_count = 0
 
-# إعداد المعاملات الافتراضية للطلب المشفر لدراما لايف
 device_id_val = "24d1-9dd-ae90-4798-b5a5-3bb15626e0b0"
-user_id_val = "_11410_1783427058075_" # المعرّف الدقيق الذي تم اعتراضه وفكه
+user_id_val = "123456789"
 timestamp_val = str(int(time.time() * 1000))
 
 drama_regular_list = []
@@ -821,7 +768,6 @@ drama_regular_list = []
 for topic in drama_topics:
     print(f"🔄 جاري سحب باقة دراما لايف لفئة {topic}...")
     
-    # بناء الـ JSON للطلب
     topic_payload = {
         "user_id": user_id_val,
         "device_id": device_id_val,
@@ -833,42 +779,37 @@ for topic in drama_topics:
         "isPremium": False,
         "isCoupon_active": False,
         "hideAds": False,
-        "appCount": '{"adsFail":"1"}', # تفعيل خيار منع كشف الإعلانات لتفادي أي حجب
+        "appCount": "{}",
         "main_sport": topic
     }
     
-    # تشفير الطلب
     encrypted_payload_str = drama_encrypt(json.dumps(topic_payload))
-    
-    # إرسال طلب POST لجلب تصنيفات القنوات
     drama_url = "https://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveByTopic"
     
-    # ترويسات الحماية الرسمية لتطبيق دراما لايف
     drama_req_headers = {
         "Content-Type": "application/json; charset=utf-8",
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)"
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)",
+        "Connection": "Keep-Alive",
+        "Accept-Encoding": "gzip"
     }
     
     try:
         response = session.post(drama_url, headers=drama_req_headers, data=encrypted_payload_str, timeout=15, verify=False)
         
         if response.status_code in [200, 201]:
-            decrypted_response = drama_decrypt(response.text)
-            
-            # فحص ما إذا كان فك التشفير قد أنتج بيانات صالحة أم مجرد رد HTML/JSON غير مشفر
-            if not decrypted_response or decrypted_response.strip().startswith(("<", "{", "[")) and "live" not in decrypted_response:
-                print(f"⚠️ تحذير: رد السيرفر لفئة {topic} غير مشفر أو تالف.")
-                print(f"   الرد الخام (أول 250 حرف): {response.text[:250]}")
+            # نظام التشخيص: التحقق مما إذا كان الرد نصاً عادياً (رسالة خطأ) بدلاً من نص مشفر
+            if response.text.strip().startswith("{") or response.text.strip().startswith("<"):
+                print(f"⚠️ السيرفر أرجع رسالة خطأ غير مشفرة لفئة {topic}: {response.text[:200]}")
                 continue
                 
-            try:
-                response_json = json.loads(decrypted_response)
-            except json.JSONDecodeError as je:
-                print(f"⚠️ فشل تحليل الـ JSON لـ Drama Live بعد فك التشفير: {je}")
-                print(f"   المحتوى المفكك (أول 200 حرف): {decrypted_response[:200]}")
-                continue
+            decrypted_response = drama_decrypt(response.text)
             
-            # التدقيق في مفتاح قائمة القنوات
+            if not decrypted_response:
+                print(f"⚠️ فشل فك التشفير لفئة {topic}. الرد الخام: {response.text[:200]}")
+                continue
+                
+            response_json = json.loads(decrypted_response)
+            
             channels_list = []
             if response_json and "live" in response_json:
                 channels_list = response_json["live"]
@@ -882,14 +823,12 @@ for topic in drama_topics:
                 if not channel_name or not channel_id:
                     continue
                     
-                # تصفية القنوات الحصرية المطلوبة فقط (بيين، الفجر، الألوان)
                 target_category = is_drama_target(channel_name)
                 if not target_category:
                     continue
                     
                 print(f"   ⏳ جاري استخراج بث: {channel_name} ({target_category})...")
                 
-                # طلب جلب السيرفرات لهذه القناة بالتحديد
                 stream_payload = {
                     "type": "tv",
                     "id_live": channel_id
@@ -900,15 +839,14 @@ for topic in drama_topics:
                 stream_response = session.post(streams_url, headers=drama_req_headers, data=enc_stream_payload, timeout=10, verify=False)
                 
                 if stream_response.status_code in [200, 201]:
-                    dec_streams = drama_decrypt(stream_response.text)
-                    
-                    if not dec_streams or dec_streams.strip().startswith(("<", "{", "[")) and "data" not in dec_streams:
+                    if stream_response.text.strip().startswith("{") or stream_response.text.strip().startswith("<"):
                         continue
                         
-                    try:
-                        streams_json = json.loads(dec_streams)
-                    except json.JSONDecodeError:
+                    dec_streams = drama_decrypt(stream_response.text)
+                    if not dec_streams:
                         continue
+                        
+                    streams_json = json.loads(dec_streams)
                     
                     streams_list = []
                     if streams_json and "data" in streams_json:
@@ -921,14 +859,12 @@ for topic in drama_topics:
                         if not stream_url or stream_url in seen_drama_urls:
                             continue
                             
-                        # جلب الترويسات المطلوبة لتشغيل بث دراما لايف بنجاح على الأجهزة والريسيفرات
                         stream_ua = stream.get("user_agent", "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)")
                         stream_referer = stream.get("referer", "http://live.1spbgmu.com/")
                         
                         final_url_with_headers = f"{stream_url}|User-Agent={stream_ua}&Referer={stream_referer}"
                         display_name = f"{channel_name} (Drama Live)"
                         
-                        # كتابة ترويسة EXTVLCOPT وتذييل الـ Pipe لتعمل القنوات بنسبة 100% على كافة الأجهزة والريسيفرات
                         entry = (
                             f'#EXTINF:-1 tvg-logo="" group-title="DRAMA LIVE", {display_name}\n'
                             f'#EXTVLCOPT:http-user-agent={stream_ua}\n'
@@ -939,18 +875,16 @@ for topic in drama_topics:
                         drama_regular_list.append(entry)
                         seen_drama_urls.add(stream_url)
                         drama_matched_count += 1
-                        break # نكتفي بأول سيرفر شغال للقناة
-                time.sleep(random.uniform(0.3, 0.8)) # تأخير عشوائي لحماية السكربت من الحظر
+                        break 
+                time.sleep(random.uniform(0.3, 0.8)) 
         else:
             print(f"⚠️ السيرفر رفض الطلب لفئة {topic}. كود الحالة: {response.status_code}")
             print(f"   الرد الخام: {response.text[:200]}")
     except Exception as e:
         print(f"❌ خطأ أثناء جلب قنوات دراما لايف لفئة {topic}: {e}")
 
-# دمج المحتوى
 drama_content = "".join(drama_regular_list)
 
-# تعويض وقائي ذكي لباقة دراما لايف في حال فشل الاتصال المؤقت
 if not drama_content.strip() and prev_drama.strip():
     print("🛡️ فشل جلب باقة دراما لايف ديناميكياً، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     drama_content = prev_drama
