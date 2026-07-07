@@ -172,6 +172,29 @@ def extract_section_by_headers(content, current_header, next_headers):
                 end_idx = pos
     return content[start_idx:end_idx].strip()
 
+# دالة مطورة لمطابقة قنوات الأطفال المستهدفة بدقة عالية باللغتين
+def matches_kids(channel_name):
+    name_lower = channel_name.lower()
+    if any(kw in name_lower for kw in ["tom and jerry", "tom & jerry", "توم وجيري", "توم وجري"]):
+        return "Tom and Jerry"
+    if "masha" in name_lower or "ماشا" in name_lower:
+        return "Masha and the Bear"
+    if "dora" in name_lower or "دورا" in name_lower:
+        return "Dora"
+    if "spacetoon" in name_lower or "سبيستون" in name_lower or "سبيس تون" in name_lower:
+        return "Spacetoon"
+    if "wanasa" in name_lower or "وناسة" in name_lower:
+        return "Wanasat"
+    if "baraem" in name_lower or "براعم" in name_lower:
+        return "Baraem"
+    if "cn arabia" in name_lower or "cartoon network" in name_lower or "كرتون نتورك" in name_lower:
+        return "CN Arabia"
+    
+    # فحص دقيق لقناة Jeem لمنع المطابقة مع كلمات كـ "نجيم" أو "جيمس بوند"
+    if "jeem" in name_lower or "تلفزيون جيم" in name_lower or "قناة جيم" in name_lower or "جيم" in name_lower.split():
+        return "Jeem"
+    return None
+
 
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
 print("📂 جاري جلب محتوى الـ Gist الحالي للنسخ الاحتياطي وحفظ القنوات...")
@@ -257,6 +280,11 @@ basha_headers = {
 use_basha_proxy = check_basha_proxy_status(session)
 basha_payloads = ["method=o6&event=view", "method=o2&event=view"]
 basha_content = ""
+
+# فصل قنوات الأطفال لتظهر في المقدمة دائماً
+kids_channels_list = []
+regular_channels_list = []
+
 seen_basha_urls = set() 
 matched_count = 0
 
@@ -286,6 +314,26 @@ for payload in basha_payloads:
                 if any(tag in channel_name_lower for tag in exclude_tags):
                     continue
                 
+                # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلوبة أولاً
+                kids_match = matches_kids(channel_name)
+                if kids_match:
+                    if use_basha_proxy:
+                        final_basha_url = f"http://live-albashatv.site/stream?url={raw_url}"
+                        entry = f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n{final_basha_url}\n'
+                    else:
+                        basha_ua = "okhttp/3.9.1"
+                        final_basha_url = f"{raw_url}|User-Agent={basha_ua}"
+                        entry = (
+                            f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
+                            f'#EXTVLCOPT:http-user-agent={basha_ua}\n'
+                            f'{final_basha_url}\n'
+                        )
+                    kids_channels_list.append(entry)
+                    seen_basha_urls.add(raw_url)
+                    matched_count += 1
+                    continue # الانتقال للقناة التالية فور مطابقة باقة الأطفال لعدم تكرارها
+                
+                # وإلا نتابع تصفية القنوات العادية والـ Premium الأخرى
                 is_bein = "bein" in channel_name_lower
                 
                 is_arabic_premium = False
@@ -319,29 +367,30 @@ for payload in basha_payloads:
                 if is_bein or is_arabic_premium or is_french_target:
                     if use_basha_proxy:
                         final_basha_url = f"http://live-albashatv.site/stream?url={raw_url}"
-                        
-                        basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
-                        basha_content += f'{final_basha_url}\n'
+                        entry = f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n{final_basha_url}\n'
                     else:
-                        # في حال تعطل البروكسي، نمرر هيدر الباشا okhttp/3.9.1 لضمان استمرار عمل الروابط المباشرة على الأجهزة
                         basha_ua = "okhttp/3.9.1"
                         final_basha_url = f"{raw_url}|User-Agent={basha_ua}"
-                        
-                        basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
-                        basha_content += f'#EXTVLCOPT:http-user-agent={basha_ua}\n'
-                        basha_content += f'{final_basha_url}\n'
-                    
+                        entry = (
+                            f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
+                            f'#EXTVLCOPT:http-user-agent={basha_ua}\n'
+                            f'{final_basha_url}\n'
+                        )
+                    regular_channels_list.append(entry)
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
     except Exception as e:
         print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
 
-# تعويض وقائي ذكي لباقة الباشا تيفي
+# دمج باقة الأطفال في مقدمة باقة الباشا تيفي تليها القنوات العادية الأخرى
+basha_content = "".join(kids_channels_list) + "".join(regular_channels_list)
+
+# تعويض وقائي ذكي لباقة الباشا تيفي في حال فشل الاتصال المؤقت
 if not basha_content.strip() and prev_basha.strip():
     print("🛡️ فشل جلب باقة الباشا ديناميكياً، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     basha_content = prev_basha
 else:
-    print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح.")
+    print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح (بما في ذلك قنوات الأطفال بالمقدمة).")
 
 
 # 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) ديناميكياً بالكامل
