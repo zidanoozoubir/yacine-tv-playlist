@@ -282,6 +282,46 @@ def is_drama_target(channel_name):
             return "beIN Sports Arabic"
     return None
 
+# ==================== دالة التوجيه المزدوج (Redirect Resolver) لدراما لايف ====================
+def resolve_drama_redirects(intermediate_url, user_id, device_id, app_version, session, base_headers):
+    current_url = intermediate_url
+    endpoints = [
+        "http://redirect.1spbgmu.com/redirect/getLiveByRedirect",
+        "http://redirect.1spbgmu.com/redirect/getLiveByDoubleRedirect"
+    ]
+    
+    headers = base_headers.copy()
+    headers["Host"] = "redirect.1spbgmu.com"
+    
+    for endpoint in endpoints:
+        payload = {
+            "url": current_url,
+            "user_id": user_id,
+            "device_id": device_id,
+            "version_neme": app_version
+        }
+        enc_payload = drama_encrypt(json.dumps(payload))
+        
+        try:
+            resp = session.post(endpoint, headers=headers, data=enc_payload, timeout=10, verify=False)
+            if resp.status_code in [200, 201] and resp.text.strip() and not resp.text.strip().startswith("{"):
+                dec_resp = drama_decrypt(resp.text)
+                if dec_resp:
+                    resp_json = json.loads(dec_resp)
+                    new_url = resp_json.get("url")
+                    if not new_url and "data" in resp_json:
+                        new_url = resp_json["data"].get("url")
+                        
+                    if new_url:
+                        current_url = new_url
+                        # إذا وصلنا للرابط النهائي (m3u8 أو ts)، نتوقف عن التوجيه
+                        if ".m3u8" in current_url or ".ts" in current_url:
+                            break
+        except Exception:
+            pass
+            
+    return current_url
+
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
 def decrypt_yacine(encrypted_data, header_t):
     base_key = "c!xZj+N9&G@Ev@vw"
@@ -319,6 +359,19 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
         except Exception as e:
             continue
     return None
+
+# دالة جلب رابط التوجيه (Redirect) لياسين تيفي
+def get_final_url(raw_url):
+    browser_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+    }
+    try:
+        r_redirect = requests.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=10)
+        if r_redirect.status_code in [301, 302]:
+            return r_redirect.headers.get('Location')
+    except Exception:
+        pass
+    return raw_url
 
 # دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
 def get_majed_dynamic_channels(session):
@@ -665,7 +718,6 @@ for category_endpoint, quality in targets.items():
             channel_name = channel.get('name') or ""
             channel_name_lower = channel_name.lower()
             
-            # فلترة قوية جداً لضمان جلب كل قنوات beIN (عربية، فرنسية، ماكس)
             is_target = (
                 "max" in channel_name_lower or 
                 "bein" in channel_name_lower or 
@@ -739,7 +791,7 @@ drama_content = ""
 seen_drama_urls = set()
 drama_matched_count = 0
 
-# إعدادات دراما لايف (تعمل في وضع الاسترداد الصامت في حال حظر السيرفر)
+# إعدادات دراما لايف
 device_id_val = "24d1-9dd-ae90-4798-b5a5-3bb15626e0b0"
 user_id_val = f"_11410_{int(time.time() * 1000)}_12345"
 app_version = "186"
@@ -767,13 +819,6 @@ for topic in drama_topics:
     
     encrypted_payload_str = drama_encrypt(json.dumps(topic_payload))
     
-    outer_payload = {
-        "p": encrypted_payload_str,
-        "api_ver": "1.0",
-        "p2": "eyJhbmRyb2lkX2lkIjoiIiwid2FpZCI6IiIsImlzX2NuX3NkayI6IjAiLCJpbnN0YWxsX3NyYyI6ImNvbS5hbmRyb2lkLnZlbmRpbmcifQ==",
-        "sign": "686ec8b1279b26ed6805dbeed066b922"
-    }
-    
     drama_url = "http://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveByTopic"
     
     drama_req_headers = {
@@ -785,15 +830,17 @@ for topic in drama_topics:
     }
     
     try:
-        response = session.post(drama_url, headers=drama_req_headers, data=json.dumps(outer_payload), timeout=10, verify=False)
+        response = session.post(drama_url, headers=drama_req_headers, data=encrypted_payload_str, timeout=15, verify=False)
         
         if response.status_code in [200, 201]:
             if response.text.strip().startswith("{") or response.text.strip().startswith("<") or not response.text.strip():
-                continue # تخطي صامت في حال الحظر
+                print(f"      [Debug] السيرفر أرجع بيانات غير مشفرة أو فارغة: {response.text[:50]}")
+                continue
                 
             decrypted_response = drama_decrypt(response.text)
             
             if not decrypted_response:
+                print(f"      [Debug] فشل فك التشفير للرد.")
                 continue
                 
             response_json = json.loads(decrypted_response)
@@ -804,6 +851,12 @@ for topic in drama_topics:
             elif response_json and "data" in response_json:
                 channels_list = response_json["data"]
                 
+            if not channels_list:
+                print(f"      [Debug] السيرفر لم يرجع أي قنوات في هذه الفئة.")
+                continue
+                
+            print(f"      ✔️ تم الاتصال بنجاح بسيرفر دراما لايف")
+            
             for channel in channels_list:
                 channel_name = channel.get("title") or channel.get("name") or ""
                 channel_id = channel.get("id_live") or channel.get("id")
@@ -824,17 +877,11 @@ for topic in drama_topics:
                     "device_id": device_id_val,
                     "version_neme": app_version
                 }
+                
                 enc_stream_payload = drama_encrypt(json.dumps(stream_payload))
-                
-                outer_stream_payload = {
-                    "p": enc_stream_payload,
-                    "api_ver": "1.0",
-                    "p2": "eyJhbmRyb2lkX2lkIjoiIiwid2FpZCI6IiIsImlzX2NuX3NkayI6IjAiLCJpbnN0YWxsX3NyYyI6ImNvbS5hbmRyb2lkLnZlbmRpbmcifQ==",
-                    "sign": "686ec8b1279b26ed6805dbeed066b922"
-                }
-                
                 streams_url = "http://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveAllStreamsById"
-                stream_response = session.post(streams_url, headers=drama_req_headers, data=json.dumps(outer_stream_payload), timeout=10, verify=False)
+                
+                stream_response = session.post(streams_url, headers=drama_req_headers, data=enc_stream_payload, timeout=10, verify=False)
                 
                 if stream_response.status_code in [200, 201]:
                     if stream_response.text.strip().startswith("{") or stream_response.text.strip().startswith("<") or not stream_response.text.strip():
@@ -853,14 +900,17 @@ for topic in drama_topics:
                         streams_list = streams_json["live"]
                         
                     for stream in streams_list:
-                        stream_url = stream.get("url")
-                        if not stream_url or stream_url in seen_drama_urls:
+                        intermediate_url = stream.get("url")
+                        if not intermediate_url or intermediate_url in seen_drama_urls:
                             continue
                             
+                        # هنا السحر: تمرير الرابط المبدئي لدالة التوجيه لاستخراج الرابط النهائي الحقيقي
+                        final_stream_url = resolve_drama_redirects(intermediate_url, user_id_val, device_id_val, app_version, session, drama_req_headers)
+                        
                         stream_ua = stream.get("user_agent", "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)")
                         stream_referer = stream.get("referer", "http://live.1spbgmu.com/")
                         
-                        final_url_with_headers = f"{stream_url}|User-Agent={stream_ua}&Referer={stream_referer}"
+                        final_url_with_headers = f"{final_stream_url}|User-Agent={stream_ua}&Referer={stream_referer}"
                         display_name = f"{channel_name} (Drama Live)"
                         
                         entry = (
@@ -871,17 +921,19 @@ for topic in drama_topics:
                         )
                         
                         drama_regular_list.append(entry)
-                        seen_drama_urls.add(stream_url)
+                        seen_drama_urls.add(intermediate_url)
                         drama_matched_count += 1
                         break 
                 time.sleep(random.uniform(0.3, 0.8)) 
+        else:
+            print(f"      [Debug] السيرفر رفض الطلب (كود {response.status_code}).")
     except Exception as e:
-        pass
+        print(f"      [Debug] خطأ في الاتصال بالسيرفر: {e}")
 
 drama_content = "".join(drama_regular_list)
 
 if not drama_content.strip() and prev_drama.strip():
-    print("🛡️ تم تفعيل جدار الحماية: استرداد قنوات دراما لايف السابقة بنجاح للحفاظ على الباقة.")
+    print("🛡️ فشل جلب باقة دراما لايف ديناميكياً، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     drama_content = prev_drama
 else:
     print(f"🎯 تم استخراج وتصفية ({drama_matched_count}) قناة من دراما لايف بنجاح.")
