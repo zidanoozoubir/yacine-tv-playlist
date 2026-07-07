@@ -298,10 +298,11 @@ print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من ا
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
-# الفئات المستهدفة المستقرة (90 لجودة FHD، و 89 لجودة HD) لتفادي أي خطأ في مسميات الأقسام
+# الفئات المستهدفة: 90 لجودة FHD، و 89 لجودة HD، و 91 لجودة SD المنخفضة
 targets = {
     "/api/categories/90/channels": "FHD",
-    "/api/categories/89/channels": "HD"
+    "/api/categories/89/channels": "HD",
+    "/api/categories/91/channels": "SD"
 }
 
 yacine_headers = {
