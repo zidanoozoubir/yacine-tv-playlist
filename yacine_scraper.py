@@ -6,8 +6,12 @@ import os
 import re
 import random
 import urllib.parse
+import urllib3
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
+
+# تعطيل تنبيهات شهادات الأمان غير الموثقة لتفادي حظر الطلبات
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # جلب معلومات الـ Gist من متغيرات البيئة الآمنة (GitHub Secrets)
 GIST_ID = os.environ.get("GIST_ID")
@@ -772,7 +776,7 @@ drama_matched_count = 0
 
 # إعداد المعاملات الافتراضية للطلب المشفر لدراما لايف
 device_id_val = "24d1-9dd-ae90-4798-b5a5-3bb15626e0b0"
-user_id_val = "_11410_1783427058075_12345"
+user_id_val = "_11410_1783427058075_" # المعرّف الدقيق الذي تم اعتراضه وفكه
 timestamp_val = str(int(time.time() * 1000))
 
 drama_regular_list = []
@@ -792,7 +796,7 @@ for topic in drama_topics:
         "isPremium": False,
         "isCoupon_active": False,
         "hideAds": False,
-        "appCount": "{}",
+        "appCount": '{"adsFail":"1"}', # تفعيل خيار منع كشف الإعلانات لتفادي أي حجب
         "main_sport": topic
     }
     
@@ -801,13 +805,17 @@ for topic in drama_topics:
     
     # إرسال طلب POST لجلب تصنيفات القنوات (نستخدم https مباشرة لتجنب تحويل طريقة الطلب)
     drama_url = "https://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveByTopic"
+    
+    # ترويسات الحماية الرسمية لتطبيق دراما لايف
     drama_req_headers = {
         "Content-Type": "application/json; charset=utf-8",
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)"
     }
     
     try:
-        response = session.post(drama_url, headers=drama_req_headers, data=encrypted_payload_str, timeout=15)
+        # استخدام verify=False لتخطي قيود حماية شهادات الأمان المؤقتة على خوادم البث الخاصة
+        response = session.post(drama_url, headers=drama_req_headers, data=encrypted_payload_str, timeout=15, verify=False)
+        
         if response.status_code in [200, 201]:
             decrypted_response = drama_decrypt(response.text)
             response_json = json.loads(decrypted_response)
@@ -841,7 +849,7 @@ for topic in drama_topics:
                 enc_stream_payload = drama_encrypt(json.dumps(stream_payload))
                 
                 streams_url = "https://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveAllStreamsById"
-                stream_response = session.post(streams_url, headers=drama_req_headers, data=enc_stream_payload, timeout=10)
+                stream_response = session.post(streams_url, headers=drama_req_headers, data=enc_stream_payload, timeout=10, verify=False)
                 
                 if stream_response.status_code in [200, 201]:
                     dec_streams = drama_decrypt(stream_response.text)
@@ -878,7 +886,12 @@ for topic in drama_topics:
                         drama_matched_count += 1
                         break # نكتفي بأول سيرفر شغال للقناة
                 time.sleep(random.uniform(0.3, 0.8)) # تأخير عشوائي لحماية السكربت من الحظر
+        else:
+            # نظام التشخيص الذكي: لطباعة تفاصيل كود الحالة والرد في حال الرفض من السيرفر
+            print(f"⚠️ السيرفر رفض الطلب لفئة {topic}. كود الحالة: {response.status_code}")
+            print(f"   الرد الخام: {response.text[:200]}")
     except Exception as e:
+        # نظام التشخيص الذكي: لطباعة الأخطاء البرمجية بالتفصيل
         print(f"❌ خطأ أثناء جلب قنوات دراما لايف لفئة {topic}: {e}")
 
 # دمج المحتوى
