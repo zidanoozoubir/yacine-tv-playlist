@@ -74,7 +74,6 @@ def get_final_url(raw_url):
 # دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
 def get_majed_dynamic_channels(session):
     timestamp = int(time.time() * 1000)
-    # استخدام بروتوكول HTTP العادي والمستقر الموثق في فحص الشبكة الخاص بك
     config_url = f"http://majed-koora.live/config.json?v={timestamp}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
@@ -197,7 +196,6 @@ live_content = ""
 timestamp = int(time.time() * 1000)
 
 for channel in active_majed_channels:
-    # استخدام بروتوكول HTTP المباشر لضمان عمل الرابط على كافة الشاشات وأجهزة الاستقبال
     live_url = f"http://majed-koora.live/stream.php?channel={channel}&file=stream.m3u8&v={timestamp}"
     display_name = channel.replace("majedsports", "Majed Sport ").title()
     
@@ -313,8 +311,10 @@ yacine_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
-ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/139.0.0.0 Safari/537.36"
-referer_value = "http://re.ycn-redirect.com/"
+# تصحيح الـ User-Agent بإضافة "like Gecko" المفقودة، وتجهيز ترويسة المصدر والمستند
+ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+referer_value = "https://re.ycn-redirect.com/"
+origin_value = "https://re.ycn-redirect.com"
 
 yacine_content = ""
 for category_endpoint, quality in targets.items():
@@ -355,16 +355,26 @@ for category_endpoint, quality in targets.items():
                         
                     # جلب مسمى السيرفر التلقائي من الـ API (مثل: 1، 3، HD، 5 إلخ)
                     server_label = stream.get('name', f"Server {stream_idx + 1}")
-                    final_url = get_final_url(raw_url)
+                    
+                    # ⚠️ التعديل الجوهري لحل المشكلة:
+                    # لا نقوم باستدعاء get_final_url هنا للتوجيه على خادم البناء (GitHub)؛
+                    # نترك رابط التوجيه الأصلي raw_url لتتتبعه الشاشة أو الريسيفر في منزلك مباشرة
+                    # وبذلك يحصل المشغل لديك على توكن مخصص لـ IP جهازك الفعلي لتجاوز حظر الـ IP.
+                    final_url = raw_url
                     
                     # تحويل روابط Redbee من mpd (DASH) إلى m3u8 (HLS) تلقائياً لضمان تشغيلها على كافة الأجهزة
                     if final_url and "/dash/.mpd" in final_url:
                         final_url = final_url.replace("/dash/.mpd", "/playlist.m3u8")
                     
-                    final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}"
+                    # دمج الهيدرات خلف الرابط لتطبيقات الأندرويد الداعمة لصيغة الـ Pipe (|) مثل Tivimate
+                    final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}&Origin={origin_value}"
                     display_name = f"{channel_name} {quality} - {server_label}"
                     
+                    # كتابة ترويسة EXTVLCOPT القياسية لضمان تشغيل القناة في VLC وأجهزة الاستقبال العادية التي لا تدعم الـ Pipe
                     yacine_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
+                    yacine_content += f'#EXTVLCOPT:http-user-agent={ua_value}\n'
+                    yacine_content += f'#EXTVLCOPT:http-referrer={referer_value}\n'
+                    yacine_content += f'#EXTVLCOPT:http-origin={origin_value}\n'
                     yacine_content += f'{final_url_with_headers}\n'
                     print(f"      ✔️ نجاح استخراج السيرفر: {server_label}")
             time.sleep(0.5)
