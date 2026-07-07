@@ -470,7 +470,7 @@ try:
         current_content = gist_data['files'][filename]['content']
         
         static_clean = extract_static_channels(current_content)
-        print("✔️ تم تحديد القنوات اليدوية بنجاح.")
+        print("✔️ تم تحديد القنوات اليدوية وحفظها.")
     else:
         print(f"❌ فشل جلب الـ Gist الحالي. كود الحالة: {gist_response.status_code}")
         exit(1)
@@ -799,12 +799,11 @@ for topic in drama_topics:
     # تشفير الطلب
     encrypted_payload_str = drama_encrypt(json.dumps(topic_payload))
     
-    # إرسال طلب POST لجلب تصنيفات القنوات
-    drama_url = "http://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveByTopic"
+    # إرسال طلب POST لجلب تصنيفات القنوات (نستخدم https مباشرة لتجنب تحويل طريقة الطلب)
+    drama_url = "https://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveByTopic"
     drama_req_headers = {
         "Content-Type": "application/json; charset=utf-8",
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)",
-        "Host": "live.1spbgmu.com"
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)"
     }
     
     try:
@@ -813,64 +812,72 @@ for topic in drama_topics:
             decrypted_response = drama_decrypt(response.text)
             response_json = json.loads(decrypted_response)
             
-            # التأكد من وجود بيانات القنوات
-            if response_json and "data" in response_json:
+            # التدقيق الذكي في مفتاح قائمة القنوات (دراما لايف يرسل القنوات تحت مفتاح "live")
+            channels_list = []
+            if response_json and "live" in response_json:
+                channels_list = response_json["live"]
+            elif response_json and "data" in response_json:
                 channels_list = response_json["data"]
-                for channel in channels_list:
-                    channel_name = channel.get("title") or channel.get("name") or ""
-                    channel_id = channel.get("id_live") or channel.get("id")
+                
+            for channel in channels_list:
+                channel_name = channel.get("title") or channel.get("name") or ""
+                channel_id = channel.get("id_live") or channel.get("id")
+                
+                if not channel_name or not channel_id:
+                    continue
                     
-                    if not channel_name or not channel_id:
-                        continue
+                # تصفية القنوات الحصرية المطلوبة فقط (بيين، الفجر، الألوان)
+                target_category = is_drama_target(channel_name)
+                if not target_category:
+                    continue
+                    
+                print(f"   ⏳ جاري استخراج بث: {channel_name} ({target_category})...")
+                
+                # طلب جلب السيرفرات لهذه القناة بالتحديد
+                stream_payload = {
+                    "type": "tv",
+                    "id_live": channel_id
+                }
+                enc_stream_payload = drama_encrypt(json.dumps(stream_payload))
+                
+                streams_url = "https://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveAllStreamsById"
+                stream_response = session.post(streams_url, headers=drama_req_headers, data=enc_stream_payload, timeout=10)
+                
+                if stream_response.status_code in [200, 201]:
+                    dec_streams = drama_decrypt(stream_response.text)
+                    streams_json = json.loads(dec_streams)
+                    
+                    streams_list = []
+                    if streams_json and "data" in streams_json:
+                        streams_list = streams_json["data"]
+                    elif streams_json and "live" in streams_json:
+                        streams_list = streams_json["live"]
                         
-                    # تصفية القنوات الحصرية المطلوبة فقط (بيين، الفجر، الألوان)
-                    target_category = is_drama_target(channel_name)
-                    if not target_category:
-                        continue
+                    for stream in streams_list:
+                        stream_url = stream.get("url")
+                        if not stream_url or stream_url in seen_drama_urls:
+                            continue
+                            
+                        # جلب الترويسات المطلوبة لتشغيل بث دراما لايف بنجاح على الأجهزة والريسيفرات
+                        stream_ua = stream.get("user_agent", "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)")
+                        stream_referer = stream.get("referer", "http://live.1spbgmu.com/")
                         
-                    print(f"   ⏳ جاري استخراج بث: {channel_name} ({target_category})...")
-                    
-                    # طلب جلب السيرفرات لهذه القناة بالتحديد
-                    stream_payload = {
-                        "type": "tv",
-                        "id_live": channel_id
-                    }
-                    enc_stream_payload = drama_encrypt(json.dumps(stream_payload))
-                    
-                    streams_url = "http://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveAllStreamsById"
-                    stream_response = session.post(streams_url, headers=drama_req_headers, data=enc_stream_payload, timeout=10)
-                    
-                    if stream_response.status_code in [200, 201]:
-                        dec_streams = drama_decrypt(stream_response.text)
-                        streams_json = json.loads(dec_streams)
+                        final_url_with_headers = f"{stream_url}|User-Agent={stream_ua}&Referer={stream_referer}"
+                        display_name = f"{channel_name} (Drama Live)"
                         
-                        if streams_json and "data" in streams_json:
-                            streams_list = streams_json["data"]
-                            for stream in streams_list:
-                                stream_url = stream.get("url")
-                                if not stream_url or stream_url in seen_drama_urls:
-                                    continue
-                                    
-                                # جلب الترويسات المطلوبة لتشغيل بث دراما لايف بنجاح على الأجهزة والريسيفرات
-                                stream_ua = stream.get("user_agent", "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)")
-                                stream_referer = stream.get("referer", "http://live.1spbgmu.com/")
-                                
-                                final_url_with_headers = f"{stream_url}|User-Agent={stream_ua}&Referer={stream_referer}"
-                                display_name = f"{channel_name} (Drama Live)"
-                                
-                                # كتابة ترويسة EXTVLCOPT وتذييل الـ Pipe لتعمل القنوات بنسبة 100% على كافة الأجهزة والريسيفرات
-                                entry = (
-                                    f'#EXTINF:-1 tvg-logo="" group-title="DRAMA LIVE", {display_name}\n'
-                                    f'#EXTVLCOPT:http-user-agent={stream_ua}\n'
-                                    f'#EXTVLCOPT:http-referrer={stream_referer}\n'
-                                    f'{final_url_with_headers}\n'
-                                )
-                                
-                                drama_regular_list.append(entry)
-                                seen_drama_urls.add(stream_url)
-                                drama_matched_count += 1
-                                break # نكتفي بأول سيرفر شغال للقناة
-                    time.sleep(random.uniform(0.3, 0.8)) # تأخير عشوائي لحماية السكربت من الحظر
+                        # كتابة ترويسة EXTVLCOPT وتذييل الـ Pipe لتعمل القنوات بنسبة 100% على كافة الأجهزة والريسيفرات
+                        entry = (
+                            f'#EXTINF:-1 tvg-logo="" group-title="DRAMA LIVE", {display_name}\n'
+                            f'#EXTVLCOPT:http-user-agent={stream_ua}\n'
+                            f'#EXTVLCOPT:http-referrer={stream_referer}\n'
+                            f'{final_url_with_headers}\n'
+                        )
+                        
+                        drama_regular_list.append(entry)
+                        seen_drama_urls.add(stream_url)
+                        drama_matched_count += 1
+                        break # نكتفي بأول سيرفر شغال للقناة
+                time.sleep(random.uniform(0.3, 0.8)) # تأخير عشوائي لحماية السكربت من الحظر
     except Exception as e:
         print(f"❌ خطأ أثناء جلب قنوات دراما لايف لفئة {topic}: {e}")
 
