@@ -215,7 +215,7 @@ def aes_cbc_encrypt(data, key_bytes, iv_bytes):
 
 def aes_cbc_decrypt(data, key_bytes, iv_bytes):
     if not data or len(data) % 16 != 0:
-        return b"" # حماية من خطأ bytearray إذا كانت البيانات غير مشفرة أو ناقصة
+        return b""
         
     round_keys = key_expansion(key_bytes)
     plaintext = bytearray()
@@ -232,7 +232,7 @@ def aes_cbc_decrypt(data, key_bytes, iv_bytes):
         
     pad_len = plaintext[-1]
     if pad_len < 1 or pad_len > 16:
-        return bytes(plaintext) # حماية إضافية للـ Padding
+        return bytes(plaintext)
         
     return bytes(plaintext[:-pad_len])
 
@@ -254,8 +254,6 @@ def drama_decrypt(encrypted_str):
             parts = encrypted_str.split(":")
             encrypted_b64 = parts[0]
             iv_b64 = parts[1]
-            
-            # إصلاح الـ Padding للـ Base64 إن كان ناقصاً
             iv_b64 += "=" * ((4 - len(iv_b64) % 4) % 4)
             iv_bytes = base64.b64decode(iv_b64)
         else:
@@ -303,7 +301,6 @@ def decrypt_yacine(encrypted_data, header_t):
             decrypted_bytes.append(encrypted_bytes[i] ^ full_key[i % len(full_key)])
         return decrypted_bytes.decode('utf-8')
     except Exception as e:
-        print(f"Error decrypting Yacine: {e}")
         return None
 
 # إنشاء جلسة عمل مشتركة (Session) للحفاظ على الكوكيز وتفادي الحظر
@@ -759,8 +756,9 @@ drama_content = ""
 seen_drama_urls = set()
 drama_matched_count = 0
 
+# إعداد المعاملات الافتراضية للطلب المشفر لدراما لايف
 device_id_val = "24d1-9dd-ae90-4798-b5a5-3bb15626e0b0"
-user_id_val = "123456789"
+user_id_val = f"_11410_{int(time.time() * 1000)}_12345"
 timestamp_val = str(int(time.time() * 1000))
 
 drama_regular_list = []
@@ -768,6 +766,7 @@ drama_regular_list = []
 for topic in drama_topics:
     print(f"🔄 جاري سحب باقة دراما لايف لفئة {topic}...")
     
+    # بناء الـ JSON للطلب الداخلي
     topic_payload = {
         "user_id": user_id_val,
         "device_id": device_id_val,
@@ -779,27 +778,39 @@ for topic in drama_topics:
         "isPremium": False,
         "isCoupon_active": False,
         "hideAds": False,
-        "appCount": "{}",
-        "main_sport": topic
+        "appCount": "{\"adsFail\":\"1\"}",
+        "main_sport": topic,
+        "topic": topic
     }
     
+    # تشفير الطلب الداخلي
     encrypted_payload_str = drama_encrypt(json.dumps(topic_payload))
-    drama_url = "https://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveByTopic"
+    
+    # بناء الغلاف الخارجي للطلب (Outer JSON Wrapper) تماماً كما يرسله التطبيق
+    outer_payload = {
+        "p": encrypted_payload_str,
+        "api_ver": "1.0",
+        "p2": "eyJhbmRyb2lkX2lkIjoiIiwid2FpZCI6IiIsImlzX2NuX3NkayI6IjAiLCJpbnN0YWxsX3NyYyI6ImNvbS5hbmRyb2lkLnZlbmRpbmcifQ==",
+        "sign": "686ec8b1279b26ed6805dbeed066b922"
+    }
+    
+    # إرسال طلب POST لجلب تصنيفات القنوات
+    drama_url = "http://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveByTopic"
     
     drama_req_headers = {
         "Content-Type": "application/json; charset=utf-8",
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)",
         "Connection": "Keep-Alive",
-        "Accept-Encoding": "gzip"
+        "Accept-Encoding": "gzip",
+        "Host": "live.1spbgmu.com"
     }
     
     try:
-        response = session.post(drama_url, headers=drama_req_headers, data=encrypted_payload_str, timeout=15, verify=False)
+        response = session.post(drama_url, headers=drama_req_headers, data=json.dumps(outer_payload), timeout=15, verify=False)
         
         if response.status_code in [200, 201]:
-            # نظام التشخيص: التحقق مما إذا كان الرد نصاً عادياً (رسالة خطأ) بدلاً من نص مشفر
-            if response.text.strip().startswith("{") or response.text.strip().startswith("<"):
-                print(f"⚠️ السيرفر أرجع رسالة خطأ غير مشفرة لفئة {topic}: {response.text[:200]}")
+            if response.text.strip().startswith("{") or response.text.strip().startswith("<") or not response.text.strip():
+                print(f"⚠️ السيرفر أرجع رسالة خطأ أو نص فارغ لفئة {topic}: {response.text[:200]}")
                 continue
                 
             decrypted_response = drama_decrypt(response.text)
@@ -831,15 +842,25 @@ for topic in drama_topics:
                 
                 stream_payload = {
                     "type": "tv",
-                    "id_live": channel_id
+                    "id_live": channel_id,
+                    "user_id": user_id_val,
+                    "device_id": device_id_val,
+                    "version_neme": "186"
                 }
                 enc_stream_payload = drama_encrypt(json.dumps(stream_payload))
                 
-                streams_url = "https://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveAllStreamsById"
-                stream_response = session.post(streams_url, headers=drama_req_headers, data=enc_stream_payload, timeout=10, verify=False)
+                outer_stream_payload = {
+                    "p": enc_stream_payload,
+                    "api_ver": "1.0",
+                    "p2": "eyJhbmRyb2lkX2lkIjoiIiwid2FpZCI6IiIsImlzX2NuX3NkayI6IjAiLCJpbnN0YWxsX3NyYyI6ImNvbS5hbmRyb2lkLnZlbmRpbmcifQ==",
+                    "sign": "686ec8b1279b26ed6805dbeed066b922"
+                }
+                
+                streams_url = "http://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveAllStreamsById"
+                stream_response = session.post(streams_url, headers=drama_req_headers, data=json.dumps(outer_stream_payload), timeout=10, verify=False)
                 
                 if stream_response.status_code in [200, 201]:
-                    if stream_response.text.strip().startswith("{") or stream_response.text.strip().startswith("<"):
+                    if stream_response.text.strip().startswith("{") or stream_response.text.strip().startswith("<") or not stream_response.text.strip():
                         continue
                         
                     dec_streams = drama_decrypt(stream_response.text)
