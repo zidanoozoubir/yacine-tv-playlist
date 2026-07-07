@@ -753,20 +753,18 @@ drama_content = ""
 seen_drama_urls = set()
 drama_matched_count = 0
 
-# تم تحويل النطاقات إلى HTTPS لتخطي رفض الاتصال
+# العودة إلى HTTP لأن سيرفراتهم لا تدعم HTTPS بشكل صحيح (وهذا سبب الخطأ)
 DRAMA_DOMAINS = [
-    "https://live.1spbgmu.com",
-    "https://live.dramalive.org",
-    "https://api.dramalive.org"
+    "http://live.1spbgmu.com"
 ]
 
-# إعداد المعاملات الافتراضية للطلب المشفر لدراما لايف
-device_id_val = "24d1-9dd-ae90-4798-b5a5-3bb15626e0b0"
-user_id_val = f"_11410_{int(time.time() * 1000)}_12345"
-app_version = "205"
-
-# توليد Android ID عشوائي لتخطي الحماية الجديدة
+# توليد بيانات هاتف عشوائية بالكامل لتخطي الحظر
 fake_android_id = ''.join(random.choices('0123456789abcdef', k=16))
+fake_device_id = f"{''.join(random.choices('0123456789abcdef', k=8))}-{''.join(random.choices('0123456789abcdef', k=4))}-{''.join(random.choices('0123456789abcdef', k=4))}-{''.join(random.choices('0123456789abcdef', k=4))}-{''.join(random.choices('0123456789abcdef', k=12))}"
+
+user_id_val = f"_11410_{int(time.time() * 1000)}_{random.randint(10000, 99999)}"
+app_version = "186" # العودة للإصدار 186 لأن مفتاح التشفير الخاص بنا يطابق هذا الإصدار فقط
+
 p2_json = {"android_id": fake_android_id, "waid": "", "is_cn_sdk": "0", "install_src": "com.android.vending"}
 p2_b64 = base64.b64encode(json.dumps(p2_json).encode('utf-8')).decode('utf-8')
 
@@ -777,7 +775,7 @@ for topic in drama_topics:
     
     topic_payload = {
         "user_id": user_id_val,
-        "device_id": device_id_val,
+        "device_id": fake_device_id,
         "version_neme": app_version,
         "language": "ar",
         "timezone": "Africa/Cairo",
@@ -796,15 +794,19 @@ for topic in drama_topics:
     outer_payload = {
         "p": encrypted_payload_str,
         "api_ver": "1.0",
-        "p2": p2_b64, # استخدام البصمة العشوائية
+        "p2": p2_b64,
         "sign": "686ec8b1279b26ed6805dbeed066b922"
     }
     
+    # توليد IP عربي عشوائي لتخطي حظر سيرفرات جيت هاب
+    random_ip = f"197.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}"
+    
     drama_req_headers = {
         "Content-Type": "application/json; charset=utf-8",
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 13; SM-S918B Build/TP1A.220624.014)",
-        "X-Requested-With": "com.devcoder.dramalive",
-        "Accept": "application/json, text/plain, */*",
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 11; SM-A515F Build/RP1A.200720.012)",
+        "X-Forwarded-For": random_ip,
+        "Client-IP": random_ip,
+        "Host": "live.1spbgmu.com",
         "Connection": "Keep-Alive",
         "Accept-Encoding": "gzip"
     }
@@ -866,7 +868,7 @@ for topic in drama_topics:
                     "type": "tv",
                     "id_live": channel_id,
                     "user_id": user_id_val,
-                    "device_id": device_id_val,
+                    "device_id": fake_device_id,
                     "version_neme": app_version
                 }
                 enc_stream_payload = drama_encrypt(json.dumps(stream_payload))
@@ -902,7 +904,7 @@ for topic in drama_topics:
                         if not stream_url or stream_url in seen_drama_urls:
                             continue
                             
-                        stream_ua = stream.get("user_agent", "Dalvik/2.1.0 (Linux; U; Android 13; SM-S918B Build/TP1A.220624.014)")
+                        stream_ua = stream.get("user_agent", "Dalvik/2.1.0 (Linux; U; Android 11; SM-A515F Build/RP1A.200720.012)")
                         stream_referer = stream.get("referer", f"{domain}/")
                         
                         final_url_with_headers = f"{stream_url}|User-Agent={stream_ua}&Referer={stream_referer}"
