@@ -214,18 +214,36 @@ def aes_cbc_encrypt(data, key_bytes, iv_bytes):
     return bytes(ciphertext)
 
 def aes_cbc_decrypt(data, key_bytes, iv_bytes):
-    round_keys = key_expansion(key_bytes)
-    plaintext = bytearray()
-    prev = iv_bytes
-    for i in range(0, len(data), 16):
-        block = data[i:i+16]
-        decrypted = aes_decrypt_block(block, round_keys)
-        xored = bytes([decrypted[j] ^ prev[j] for j in range(16)])
-        plaintext.extend(xored)
-        prev = block
-        
-    pad_len = plaintext[-1]
-    return bytes(plaintext[:-pad_len])
+    if not data or len(data) % 16 != 0:
+        return b""
+    try:
+        round_keys = key_expansion(key_bytes)
+        plaintext = bytearray()
+        prev = iv_bytes
+        for i in range(0, len(data), 16):
+            block = data[i:i+16]
+            if len(block) < 16:
+                break
+            decrypted = aes_decrypt_block(block, round_keys)
+            xored = bytes([decrypted[j] ^ prev[j] for j in range(16)])
+            plaintext.extend(xored)
+            prev = block
+            
+        if not plaintext:
+            return b""
+            
+        pad_len = plaintext[-1]
+        if pad_len < 1 or pad_len > 16:
+            return bytes(plaintext)
+            
+        # التحقق من صحة حشو PKCS#7 لمنع مشاكل الفهرس خارج الحدود
+        for b in plaintext[-pad_len:]:
+            if b != pad_len:
+                return bytes(plaintext)
+                
+        return bytes(plaintext[:-pad_len])
+    except Exception:
+        return b""
 
 # ==================== دوال تشفير وفك تشفير دراما لايف ====================
 DRAMA_KEY = b"0123456789abcdef"
@@ -240,17 +258,36 @@ def drama_encrypt(data_str):
     return f"{encrypted_b64}:{iv_b64}"
 
 def drama_decrypt(encrypted_str):
-    if ":" in encrypted_str:
-        parts = encrypted_str.split(":")
-        encrypted_b64 = parts[0]
-        iv_b64 = parts[1]
-        iv_bytes = base64.b64decode(iv_b64)
-    else:
-        encrypted_b64 = encrypted_str
-        iv_bytes = DRAMA_DEFAULT_IV
-    encrypted_bytes = base64.b64decode(encrypted_b64)
-    decrypted = aes_cbc_decrypt(encrypted_bytes, DRAMA_KEY, iv_bytes)
-    return decrypted.decode('utf-8', errors='ignore')
+    if not encrypted_str:
+        return ""
+    
+    # فحص أولي: إذا كان الرد عبارة عن JSON أو HTML صريح، نتجنب محاولة فك تشفيره
+    trimmed = encrypted_str.strip()
+    if trimmed.startswith("{") or trimmed.startswith("[") or trimmed.startswith("<"):
+        return trimmed
+
+    try:
+        if ":" in encrypted_str:
+            parts = encrypted_str.split(":")
+            encrypted_b64 = parts[0]
+            iv_b64 = parts[1]
+            iv_bytes = base64.b64decode(iv_b64)
+        else:
+            encrypted_b64 = encrypted_str
+            iv_bytes = DRAMA_DEFAULT_IV
+            
+        encrypted_bytes = base64.b64decode(encrypted_b64)
+        
+        if len(iv_bytes) != 16:
+            iv_bytes = DRAMA_DEFAULT_IV
+            
+        decrypted = aes_cbc_decrypt(encrypted_bytes, DRAMA_KEY, iv_bytes)
+        if not decrypted:
+            return ""
+        return decrypted.decode('utf-8', errors='ignore')
+    except Exception as e:
+        print(f"⚠️ فشل فك التشفير التلقائي: {e}")
+        return ""
 
 # دالة مطابقة القنوات المطلوبة من دراما لايف بدقة متناهية
 def is_drama_target(channel_name):
@@ -803,7 +840,7 @@ for topic in drama_topics:
     # تشفير الطلب
     encrypted_payload_str = drama_encrypt(json.dumps(topic_payload))
     
-    # إرسال طلب POST لجلب تصنيفات القنوات (نستخدم https مباشرة لتجنب تحويل طريقة الطلب)
+    # إرسال طلب POST لجلب تصنيفات القنوات
     drama_url = "https://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveByTopic"
     
     # ترويسات الحماية الرسمية لتطبيق دراما لايف
@@ -813,14 +850,25 @@ for topic in drama_topics:
     }
     
     try:
-        # استخدام verify=False لتخطي قيود حماية شهادات الأمان المؤقتة على خوادم البث الخاصة
         response = session.post(drama_url, headers=drama_req_headers, data=encrypted_payload_str, timeout=15, verify=False)
         
         if response.status_code in [200, 201]:
             decrypted_response = drama_decrypt(response.text)
-            response_json = json.loads(decrypted_response)
             
-            # التدقيق الذكي في مفتاح قائمة القنوات (دراما لايف يرسل القنوات تحت مفتاح "live")
+            # فحص ما إذا كان فك التشفير قد أنتج بيانات صالحة أم مجرد رد HTML/JSON غير مشفر
+            if not decrypted_response or decrypted_response.strip().startswith(("<", "{", "[")) and "live" not in decrypted_response:
+                print(f"⚠️ تحذير: رد السيرفر لفئة {topic} غير مشفر أو تالف.")
+                print(f"   الرد الخام (أول 250 حرف): {response.text[:250]}")
+                continue
+                
+            try:
+                response_json = json.loads(decrypted_response)
+            except json.JSONDecodeError as je:
+                print(f"⚠️ فشل تحليل الـ JSON لـ Drama Live بعد فك التشفير: {je}")
+                print(f"   المحتوى المفكك (أول 200 حرف): {decrypted_response[:200]}")
+                continue
+            
+            # التدقيق في مفتاح قائمة القنوات
             channels_list = []
             if response_json and "live" in response_json:
                 channels_list = response_json["live"]
@@ -853,7 +901,14 @@ for topic in drama_topics:
                 
                 if stream_response.status_code in [200, 201]:
                     dec_streams = drama_decrypt(stream_response.text)
-                    streams_json = json.loads(dec_streams)
+                    
+                    if not dec_streams or dec_streams.strip().startswith(("<", "{", "[")) and "data" not in dec_streams:
+                        continue
+                        
+                    try:
+                        streams_json = json.loads(dec_streams)
+                    except json.JSONDecodeError:
+                        continue
                     
                     streams_list = []
                     if streams_json and "data" in streams_json:
@@ -887,11 +942,9 @@ for topic in drama_topics:
                         break # نكتفي بأول سيرفر شغال للقناة
                 time.sleep(random.uniform(0.3, 0.8)) # تأخير عشوائي لحماية السكربت من الحظر
         else:
-            # نظام التشخيص الذكي: لطباعة تفاصيل كود الحالة والرد في حال الرفض من السيرفر
             print(f"⚠️ السيرفر رفض الطلب لفئة {topic}. كود الحالة: {response.status_code}")
             print(f"   الرد الخام: {response.text[:200]}")
     except Exception as e:
-        # نظام التشخيص الذكي: لطباعة الأخطاء البرمجية بالتفصيل
         print(f"❌ خطأ أثناء جلب قنوات دراما لايف لفئة {topic}: {e}")
 
 # دمج المحتوى
