@@ -269,25 +269,21 @@ def drama_decrypt(encrypted_str):
     except Exception as e:
         return ""
 
-# دالة مطابقة القنوات المطلوبة من دراما لايف بدقة متناهية
+# دالة مطابقة القنوات المطلوبة من دراما لايف بدقة متناهية (مخصصة للبي إن فقط)
 def is_drama_target(channel_name):
     name_lower = channel_name.lower()
     
-    if "fajer" in name_lower or "fajr" in name_lower or "الفجر" in name_lower:
-        return "Al Fajer"
-    if "alwan" in name_lower or "الوان" in name_lower or "ألوان" in name_lower:
-        return "Alwan Sports"
-    if "max" in name_lower or "ماكس" in name_lower:
-        return "beIN Sports Max"
-    
+    # التحقق إذا كانت القناة تابعة لـ beIN
     is_bein = "bein" in name_lower or "بي ان" in name_lower or "بين" in name_lower
-    is_french = "fr" in name_lower or "french" in name_lower or "fr:" in name_lower or "fr " in name_lower or "(fr)" in name_lower or "[fr]" in name_lower or "france" in name_lower
     
-    if is_bein and is_french:
-        return "beIN Sports French"
-    elif is_bein and not is_french:
-        return "beIN Sports Arabic"
-        
+    if is_bein:
+        if "max" in name_lower or "ماكس" in name_lower:
+            return "beIN Sports Max"
+        elif any(tag in name_lower for tag in ["fr", "french", "france", "(fr)", "[fr]", "fr:"]):
+            return "beIN Sports French"
+        else:
+            return "beIN Sports Arabic"
+            
     return None
 
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
@@ -369,7 +365,8 @@ def extract_static_channels(m3u_content):
     
     exclude_keywords = [
         "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
-        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "DRAMA LIVE"
+        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "DRAMA LIVE",
+        "live.1spbgmu.com", "live.dramalive.org", "api.dramalive.org"
     ]
 
     for line in lines:
@@ -756,37 +753,41 @@ drama_content = ""
 seen_drama_urls = set()
 drama_matched_count = 0
 
-# إعداد المعاملات الافتراضية للطلب المشفر لدراما لايف
+# قائمة نطاقات دراما لايف لتفادي توقف سيرفر واحد أو حظره
+DRAMA_DOMAINS = [
+    "http://live.1spbgmu.com",
+    "http://live.dramalive.org",
+    "http://api.dramalive.org"
+]
+
+# إعداد المعاملات الافتراضية للطلب المشفر لدراما لايف (تم تحديث الإصدار)
 device_id_val = "24d1-9dd-ae90-4798-b5a5-3bb15626e0b0"
 user_id_val = f"_11410_{int(time.time() * 1000)}_12345"
-timestamp_val = str(int(time.time() * 1000))
+app_version = "205" # رقم إصدار أحدث لتخطي الحظر
 
 drama_regular_list = []
 
 for topic in drama_topics:
     print(f"🔄 جاري سحب باقة دراما لايف لفئة {topic}...")
     
-    # بناء الـ JSON للطلب الداخلي
     topic_payload = {
         "user_id": user_id_val,
         "device_id": device_id_val,
-        "version_neme": "186",
-        "language": "fr",
-        "timezone": "Europe/Paris",
+        "version_neme": app_version,
+        "language": "ar",
+        "timezone": "Africa/Cairo",
         "ACTIVATED_TYPE": "direct",
         "OsStoreVersion": False,
-        "isPremium": False,
+        "isPremium": True,
         "isCoupon_active": False,
-        "hideAds": False,
+        "hideAds": True,
         "appCount": "{\"adsFail\":\"1\"}",
         "main_sport": topic,
         "topic": topic
     }
     
-    # تشفير الطلب الداخلي
     encrypted_payload_str = drama_encrypt(json.dumps(topic_payload))
     
-    # بناء الغلاف الخارجي للطلب (Outer JSON Wrapper) تماماً كما يرسله التطبيق
     outer_payload = {
         "p": encrypted_payload_str,
         "api_ver": "1.0",
@@ -794,115 +795,124 @@ for topic in drama_topics:
         "sign": "686ec8b1279b26ed6805dbeed066b922"
     }
     
-    # إرسال طلب POST لجلب تصنيفات القنوات
-    drama_url = "http://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveByTopic"
-    
     drama_req_headers = {
         "Content-Type": "application/json; charset=utf-8",
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)",
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 13; SM-S918B Build/TP1A.220624.014)",
+        "X-Requested-With": "com.devcoder.dramalive", # هيدر مهم جداً لتخطي الحماية
         "Connection": "Keep-Alive",
-        "Accept-Encoding": "gzip",
-        "Host": "live.1spbgmu.com"
+        "Accept-Encoding": "gzip"
     }
     
-    try:
-        response = session.post(drama_url, headers=drama_req_headers, data=json.dumps(outer_payload), timeout=15, verify=False)
+    topic_success = False
+    
+    for domain in DRAMA_DOMAINS:
+        if topic_success:
+            break
+            
+        drama_url = f"{domain}/api/live/livedrama/v13.0.0/getLiveByTopic"
+        drama_req_headers["Host"] = domain.replace("http://", "").replace("https://", "")
         
-        if response.status_code in [200, 201]:
-            if response.text.strip().startswith("{") or response.text.strip().startswith("<") or not response.text.strip():
-                print(f"⚠️ السيرفر أرجع رسالة خطأ أو نص فارغ لفئة {topic}: {response.text[:200]}")
-                continue
-                
-            decrypted_response = drama_decrypt(response.text)
+        try:
+            response = session.post(drama_url, headers=drama_req_headers, data=json.dumps(outer_payload), timeout=15, verify=False)
             
-            if not decrypted_response:
-                print(f"⚠️ فشل فك التشفير لفئة {topic}. الرد الخام: {response.text[:200]}")
-                continue
+            if response.status_code in [200, 201]:
+                if not response.text.strip() or response.text.strip().startswith("{") or response.text.strip().startswith("<"):
+                    continue # السيرفر أرجع نص فارغ، جرب الدومين التالي
+                    
+                decrypted_response = drama_decrypt(response.text)
                 
-            response_json = json.loads(decrypted_response)
-            
-            channels_list = []
-            if response_json and "live" in response_json:
-                channels_list = response_json["live"]
-            elif response_json and "data" in response_json:
-                channels_list = response_json["data"]
-                
-            for channel in channels_list:
-                channel_name = channel.get("title") or channel.get("name") or ""
-                channel_id = channel.get("id_live") or channel.get("id")
-                
-                if not channel_name or not channel_id:
+                if not decrypted_response:
                     continue
                     
-                target_category = is_drama_target(channel_name)
-                if not target_category:
+                response_json = json.loads(decrypted_response)
+                
+                channels_list = []
+                if response_json and "live" in response_json:
+                    channels_list = response_json["live"]
+                elif response_json and "data" in response_json:
+                    channels_list = response_json["data"]
+                    
+                if not channels_list:
                     continue
                     
-                print(f"   ⏳ جاري استخراج بث: {channel_name} ({target_category})...")
+                topic_success = True # نجحنا في جلب القنوات
                 
-                stream_payload = {
-                    "type": "tv",
-                    "id_live": channel_id,
-                    "user_id": user_id_val,
-                    "device_id": device_id_val,
-                    "version_neme": "186"
-                }
-                enc_stream_payload = drama_encrypt(json.dumps(stream_payload))
-                
-                outer_stream_payload = {
-                    "p": enc_stream_payload,
-                    "api_ver": "1.0",
-                    "p2": "eyJhbmRyb2lkX2lkIjoiIiwid2FpZCI6IiIsImlzX2NuX3NkayI6IjAiLCJpbnN0YWxsX3NyYyI6ImNvbS5hbmRyb2lkLnZlbmRpbmcifQ==",
-                    "sign": "686ec8b1279b26ed6805dbeed066b922"
-                }
-                
-                streams_url = "http://live.1spbgmu.com/api/live/livedrama/v13.0.0/getLiveAllStreamsById"
-                stream_response = session.post(streams_url, headers=drama_req_headers, data=json.dumps(outer_stream_payload), timeout=10, verify=False)
-                
-                if stream_response.status_code in [200, 201]:
-                    if stream_response.text.strip().startswith("{") or stream_response.text.strip().startswith("<") or not stream_response.text.strip():
-                        continue
-                        
-                    dec_streams = drama_decrypt(stream_response.text)
-                    if not dec_streams:
-                        continue
-                        
-                    streams_json = json.loads(dec_streams)
+                for channel in channels_list:
+                    channel_name = channel.get("title") or channel.get("name") or ""
+                    channel_id = channel.get("id_live") or channel.get("id")
                     
-                    streams_list = []
-                    if streams_json and "data" in streams_json:
-                        streams_list = streams_json["data"]
-                    elif streams_json and "live" in streams_json:
-                        streams_list = streams_json["live"]
+                    if not channel_name or not channel_id:
+                        continue
                         
-                    for stream in streams_list:
-                        stream_url = stream.get("url")
-                        if not stream_url or stream_url in seen_drama_urls:
+                    target_category = is_drama_target(channel_name)
+                    if not target_category:
+                        continue
+                        
+                    print(f"   ⏳ جاري استخراج بث: {channel_name} ({target_category})...")
+                    
+                    stream_payload = {
+                        "type": "tv",
+                        "id_live": channel_id,
+                        "user_id": user_id_val,
+                        "device_id": device_id_val,
+                        "version_neme": app_version
+                    }
+                    enc_stream_payload = drama_encrypt(json.dumps(stream_payload))
+                    
+                    outer_stream_payload = {
+                        "p": enc_stream_payload,
+                        "api_ver": "1.0",
+                        "p2": "eyJhbmRyb2lkX2lkIjoiIiwid2FpZCI6IiIsImlzX2NuX3NkayI6IjAiLCJpbnN0YWxsX3NyYyI6ImNvbS5hbmRyb2lkLnZlbmRpbmcifQ==",
+                        "sign": "686ec8b1279b26ed6805dbeed066b922"
+                    }
+                    
+                    streams_url = f"{domain}/api/live/livedrama/v13.0.0/getLiveAllStreamsById"
+                    stream_response = session.post(streams_url, headers=drama_req_headers, data=json.dumps(outer_stream_payload), timeout=10, verify=False)
+                    
+                    if stream_response.status_code in [200, 201]:
+                        if not stream_response.text.strip() or stream_response.text.strip().startswith("{") or stream_response.text.strip().startswith("<"):
                             continue
                             
-                        stream_ua = stream.get("user_agent", "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)")
-                        stream_referer = stream.get("referer", "http://live.1spbgmu.com/")
+                        dec_streams = drama_decrypt(stream_response.text)
+                        if not dec_streams:
+                            continue
+                            
+                        streams_json = json.loads(dec_streams)
                         
-                        final_url_with_headers = f"{stream_url}|User-Agent={stream_ua}&Referer={stream_referer}"
-                        display_name = f"{channel_name} (Drama Live)"
-                        
-                        entry = (
-                            f'#EXTINF:-1 tvg-logo="" group-title="DRAMA LIVE", {display_name}\n'
-                            f'#EXTVLCOPT:http-user-agent={stream_ua}\n'
-                            f'#EXTVLCOPT:http-referrer={stream_referer}\n'
-                            f'{final_url_with_headers}\n'
-                        )
-                        
-                        drama_regular_list.append(entry)
-                        seen_drama_urls.add(stream_url)
-                        drama_matched_count += 1
-                        break 
-                time.sleep(random.uniform(0.3, 0.8)) 
-        else:
-            print(f"⚠️ السيرفر رفض الطلب لفئة {topic}. كود الحالة: {response.status_code}")
-            print(f"   الرد الخام: {response.text[:200]}")
-    except Exception as e:
-        print(f"❌ خطأ أثناء جلب قنوات دراما لايف لفئة {topic}: {e}")
+                        streams_list = []
+                        if streams_json and "data" in streams_json:
+                            streams_list = streams_json["data"]
+                        elif streams_json and "live" in streams_json:
+                            streams_list = streams_json["live"]
+                            
+                        for stream in streams_list:
+                            stream_url = stream.get("url")
+                            if not stream_url or stream_url in seen_drama_urls:
+                                continue
+                                
+                            stream_ua = stream.get("user_agent", "Dalvik/2.1.0 (Linux; U; Android 13; SM-S918B Build/TP1A.220624.014)")
+                            stream_referer = stream.get("referer", f"{domain}/")
+                            
+                            final_url_with_headers = f"{stream_url}|User-Agent={stream_ua}&Referer={stream_referer}"
+                            display_name = f"{channel_name} (Drama Live)"
+                            
+                            entry = (
+                                f'#EXTINF:-1 tvg-logo="" group-title="DRAMA LIVE", {display_name}\n'
+                                f'#EXTVLCOPT:http-user-agent={stream_ua}\n'
+                                f'#EXTVLCOPT:http-referrer={stream_referer}\n'
+                                f'{final_url_with_headers}\n'
+                            )
+                            
+                            drama_regular_list.append(entry)
+                            seen_drama_urls.add(stream_url)
+                            drama_matched_count += 1
+                            break 
+                    time.sleep(random.uniform(0.3, 0.8)) 
+        except Exception as e:
+            continue # جرب الدومين التالي في حالة الخطأ
+            
+    if not topic_success:
+        print(f"⚠️ فشل جلب فئة {topic} من جميع السيرفرات المتاحة.")
 
 drama_content = "".join(drama_regular_list)
 
