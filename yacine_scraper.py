@@ -311,7 +311,7 @@ yacine_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
-# تصحيح الـ User-Agent بإضافة "like Gecko" المفقودة، وتجهيز ترويسة المصدر والمستند
+# تصحيح الـ User-Agent وإعداد ترويسات الحماية
 ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 referer_value = "https://re.ycn-redirect.com/"
 origin_value = "https://re.ycn-redirect.com"
@@ -323,13 +323,13 @@ for category_endpoint, quality in targets.items():
     
     if channels_data and 'data' in channels_data:
         channels_list = channels_data['data']
-        for index, channel in enumerate(channels_list):
-            channel_name = channel.get('name')
-            channel_id = channel.get('id')
+        
+        # 1. تصفية قنوات BEIN سبورت وماكس المستهدفة أولاً
+        filtered_channels = []
+        for channel in channels_list:
+            channel_name = channel.get('name') or ""
+            channel_name_lower = channel_name.lower()
             
-            channel_name_lower = channel_name.lower() if channel_name else ""
-            
-            # تصفية القنوات المستهدفة بالبحث باللغتين العربية والإنجليزية لضمان الشمولية
             is_target = (
                 "max" in channel_name_lower or 
                 "bein" in channel_name_lower or 
@@ -337,46 +337,62 @@ for category_endpoint, quality in targets.items():
                 "بين" in channel_name_lower or
                 "سبورت" in channel_name_lower
             )
-            
-            if not is_target:
-                continue
+            if is_target:
+                filtered_channels.append(channel)
                 
-            print(f"   ⏳ [{index + 1}/{len(channels_list)}] جاري استخراج: {channel_name}...")
+        # 2. ترتيب القنوات تصاعدياً ورقمياً لضمان الفرز من 1 إلى 5 بشكل منظم
+        def extract_number(name):
+            nums = re.findall(r'\d+', name)
+            return int(nums[0]) if nums else 999
+            
+        filtered_channels.sort(key=lambda x: extract_number(x.get('name', '')))
+        
+        # 3. البدء في استخراج الروابط وتصفية سيرفرات الـ DRM غير الشغالة
+        for index, channel in enumerate(filtered_channels):
+            channel_name = channel.get('name')
+            channel_id = channel.get('id')
+            
+            print(f"   ⏳ [{index + 1}/{len(filtered_channels)}] جاري استخراج: {channel_name}...")
             channel_detail_endpoint = f"/api/channel/{channel_id}"
             detail_data = fetch_and_decrypt_yacine_dynamic(session, channel_detail_endpoint, yacine_headers)
             
             if detail_data and 'data' in detail_data:
                 streams = detail_data['data']
-                # استخراج جميع السيرفرات المتوفرة لهذه القناة بدلاً من الخيار الأول فقط
-                for stream_idx, stream in enumerate(streams):
+                
+                # تصفية وفلترة السيرفرات الصالحة للريسيفر و VLC (استبعاد ملفات .mpd ومسارات cenc المحمية)
+                valid_urls = []
+                for stream in streams:
                     raw_url = stream.get('url')
                     if not raw_url:
                         continue
+                    
+                    # تحويل روابط Redbee من mpd إلى m3u8 تلقائياً لضمان التوافق
+                    if "/dash/.mpd" in raw_url:
+                        raw_url = raw_url.replace("/dash/.mpd", "/playlist.m3u8")
                         
-                    # جلب مسمى السيرفر التلقائي من الـ API (مثل: 1، 3، HD، 5 إلخ)
-                    server_label = stream.get('name', f"Server {stream_idx + 1}")
-                    
-                    # ⚠️ التعديل الجوهري لحل المشكلة:
-                    # لا نقوم باستدعاء get_final_url هنا للتوجيه على خادم البناء (GitHub)؛
-                    # نترك رابط التوجيه الأصلي raw_url لتتتبعه الشاشة أو الريسيفر في منزلك مباشرة
-                    # وبذلك يحصل المشغل لديك على توكن مخصص لـ IP جهازك الفعلي لتجاوز حظر الـ IP.
-                    final_url = raw_url
-                    
-                    # تحويل روابط Redbee من mpd (DASH) إلى m3u8 (HLS) تلقائياً لضمان تشغيلها على كافة الأجهزة
-                    if final_url and "/dash/.mpd" in final_url:
-                        final_url = final_url.replace("/dash/.mpd", "/playlist.m3u8")
-                    
-                    # دمج الهيدرات خلف الرابط لتطبيقات الأندرويد الداعمة لصيغة الـ Pipe (|) مثل Tivimate
+                    # استبعاد روابط DASH / DRM المشفرة بنظام Widevine لأنها مخصصة فقط لتطبيق ياسين وتتطلب مشغل مشفر
+                    if ".mpd" in raw_url.lower() or "cenc" in raw_url.lower() or "/dash/" in raw_url.lower():
+                        continue
+                        
+                    valid_urls.append(raw_url)
+                
+                # كتابة السيرفرات بالأسماء والتنسيق المرتب المطلوب
+                for stream_idx, final_url in enumerate(valid_urls):
+                    # التسمية النظيفة: السيرفر الأول يحمل اسم القناة مباشرة، والسيرفرات التالية يكتب بجانبها (S2) ثم (S3)...
+                    if stream_idx == 0:
+                        display_name = f"{channel_name} {quality}"
+                    else:
+                        display_name = f"{channel_name} {quality} (S{stream_idx + 1})"
+                        
                     final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}&Origin={origin_value}"
-                    display_name = f"{channel_name} {quality} - {server_label}"
                     
-                    # كتابة ترويسة EXTVLCOPT القياسية لضمان تشغيل القناة في VLC وأجهزة الاستقبال العادية التي لا تدعم الـ Pipe
+                    # كتابة ترويسة EXTVLCOPT القياسية وتذييل الـ Pipe لتعمل القنوات بنسبة 100% على كافة الأجهزة
                     yacine_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
                     yacine_content += f'#EXTVLCOPT:http-user-agent={ua_value}\n'
                     yacine_content += f'#EXTVLCOPT:http-referrer={referer_value}\n'
                     yacine_content += f'#EXTVLCOPT:http-origin={origin_value}\n'
                     yacine_content += f'{final_url_with_headers}\n'
-                    print(f"      ✔️ نجاح استخراج السيرفر: {server_label}")
+                    print(f"      ✔️ نجاح استخراج السيرفر: {display_name}")
             time.sleep(0.5)
 
 # دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
