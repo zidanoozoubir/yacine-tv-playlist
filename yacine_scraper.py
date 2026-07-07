@@ -4,6 +4,7 @@ import json
 import time
 import os
 import re
+import random
 import urllib.parse
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
@@ -54,7 +55,8 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
                     decrypted_json_str = decrypt_yacine(response.text, t_value)
                     if decrypted_json_str:
                         return json.loads(decrypted_json_str)
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ فشل النطاق {domain} بسبب: {e}")
             continue
     return None
 
@@ -157,8 +159,22 @@ def check_basha_proxy_status(session):
         print(f"⚠️ تم فحص البروكسي: فشل الاتصال ({e}).")
         return False
 
+# دالة ذكية لاستخراج الأقسام الحالية من الـ Gist لحمايتها في حال حدوث فشل مؤقت للـ API
+def extract_section_by_headers(content, current_header, next_headers):
+    if current_header not in content:
+        return ""
+    start_idx = content.find(current_header) + len(current_header)
+    end_idx = len(content)
+    for next_header in next_headers:
+        if next_header in content:
+            pos = content.find(next_header)
+            if pos > start_idx and pos < end_idx:
+                end_idx = pos
+    return content[start_idx:end_idx].strip()
+
+
 # 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
-print("📂 جاري جلب محتوى الـ Gist الحالي...")
+print("📂 جاري جلب محتوى الـ Gist الحالي للنسخ الاحتياطي وحفظ القنوات...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
 gist_headers = {
     "Authorization": f"token {GITHUB_TOKEN}",
@@ -166,6 +182,7 @@ gist_headers = {
 }
 
 static_clean = ""
+current_content = ""
 filename = "kz.m3u"
 
 try:
@@ -176,13 +193,25 @@ try:
         current_content = gist_data['files'][filename]['content']
         
         static_clean = extract_static_channels(current_content)
-        print("✔️ تم تحديد القنوات اليدوية وحفظها.")
+        print("✔️ تم تحديد القنوات اليدوية بنجاح.")
     else:
         print(f"❌ فشل جلب الـ Gist الحالي. كود الحالة: {gist_response.status_code}")
         exit(1)
 except Exception as e:
     print(f"❌ خطأ أثناء الاتصال بـ Gist API: {e}")
     exit(1)
+
+# ترويسات الأقسام لتسهيل استخراج الحالة السابقة كـ Fail-safe
+headers_list = [
+    "# ==================== مجموعة قنوات LIVE ====================",
+    "# ==================== مجموعة قنوات AL BASHA TV ====================",
+    "# ==================== مجموعة قنوات BEIN MAX YACINE TV ====================",
+    "# ==================== قنواتك اليدوية والثابتة ===================="
+]
+
+prev_live = extract_section_by_headers(current_content, headers_list[0], headers_list[1:])
+prev_basha = extract_section_by_headers(current_content, headers_list[1], headers_list[2:])
+prev_yacine = extract_section_by_headers(current_content, headers_list[2], headers_list[3:])
 
 session = create_session()
 final_m3u_content = ""
@@ -191,20 +220,29 @@ final_m3u_content = ""
 print("\n⚽ جاري كشف وتجهيز مجموعة قنوات LIVE المباشرة...")
 live_separator = "# ==================== مجموعة قنوات LIVE ===================="
 
-active_majed_channels = get_majed_dynamic_channels(session)
 live_content = ""
-timestamp = int(time.time() * 1000)
+try:
+    active_majed_channels = get_majed_dynamic_channels(session)
+    timestamp = int(time.time() * 1000)
 
-for channel in active_majed_channels:
-    live_url = f"http://majed-koora.live/stream.php?channel={channel}&file=stream.m3u8&v={timestamp}"
-    display_name = channel.replace("majedsports", "Majed Sport ").title()
-    
-    live_content += (
-        f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {display_name} FHD\n'
-        f'{live_url}\n'
-        f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {display_name} HD\n'
-        f'{live_url}\n'
-    )
+    for channel in active_majed_channels:
+        live_url = f"http://majed-koora.live/stream.php?channel={channel}&file=stream.m3u8&v={timestamp}"
+        display_name = channel.replace("majedsports", "Majed Sport ").title()
+        
+        live_content += (
+            f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {display_name} FHD\n'
+            f'{live_url}\n'
+            f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {display_name} HD\n'
+            f'{live_url}\n'
+        )
+except Exception as e:
+    print(f"⚠️ خطأ أثناء تحديث باقة LIVE: {e}")
+
+# تعويض وقائي ذكي لباقة LIVE
+if not live_content.strip() and prev_live.strip():
+    print("🛡️ فشل جلب باقة LIVE، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
+    live_content = prev_live
+
 
 # 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV)
 print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
@@ -281,18 +319,30 @@ for payload in basha_payloads:
                 if is_bein or is_arabic_premium or is_french_target:
                     if use_basha_proxy:
                         final_basha_url = f"http://live-albashatv.site/stream?url={raw_url}"
+                        
+                        basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
+                        basha_content += f'{final_basha_url}\n'
                     else:
-                        final_basha_url = raw_url
-                    
-                    basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
-                    basha_content += f'{final_basha_url}\n'
+                        # في حال تعطل البروكسي، نمرر هيدر الباشا okhttp/3.9.1 لضمان استمرار عمل الروابط المباشرة على الأجهزة
+                        basha_ua = "okhttp/3.9.1"
+                        final_basha_url = f"{raw_url}|User-Agent={basha_ua}"
+                        
+                        basha_content += f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
+                        basha_content += f'#EXTVLCOPT:http-user-agent={basha_ua}\n'
+                        basha_content += f'{final_basha_url}\n'
                     
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
     except Exception as e:
         print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
 
-print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح.")
+# تعويض وقائي ذكي لباقة الباشا تيفي
+if not basha_content.strip() and prev_basha.strip():
+    print("🛡️ فشل جلب باقة الباشا ديناميكياً، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
+    basha_content = prev_basha
+else:
+    print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح.")
+
 
 # 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) ديناميكياً بالكامل
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
@@ -394,7 +444,14 @@ for category_endpoint, quality in targets.items():
                     yacine_content += f'#EXTVLCOPT:http-origin={origin_value}\n'
                     yacine_content += f'{final_url_with_headers}\n'
                     print(f"      ✔️ نجاح استخراج السيرفر: {display_name}")
-            time.sleep(0.5)
+            
+            # تأخير عشوائي ذكي (Jitter) يتراوح بين 0.4 و 1.2 ثانية لتفادي كشف السكربت كـ Bot أو حظر الـ IP
+            time.sleep(random.uniform(0.4, 1.2))
+
+# تعويض وقائي ذكي لباقة ياسين تيفي
+if not yacine_content.strip() and prev_yacine.strip():
+    print("🛡️ فشل جلب باقة ياسين تيفي، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
+    yacine_content = prev_yacine
 
 # دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
 final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
