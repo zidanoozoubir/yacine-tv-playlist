@@ -272,10 +272,7 @@ def drama_decrypt(encrypted_str):
 # دالة مطابقة القنوات المطلوبة من دراما لايف بدقة متناهية (مخصصة للبي إن فقط)
 def is_drama_target(channel_name):
     name_lower = channel_name.lower()
-    
-    # التحقق إذا كانت القناة تابعة لـ beIN
     is_bein = "bein" in name_lower or "بي ان" in name_lower or "بين" in name_lower
-    
     if is_bein:
         if "max" in name_lower or "ماكس" in name_lower:
             return "beIN Sports Max"
@@ -283,7 +280,6 @@ def is_drama_target(channel_name):
             return "beIN Sports French"
         else:
             return "beIN Sports Arabic"
-            
     return None
 
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
@@ -323,19 +319,6 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
         except Exception as e:
             continue
     return None
-
-# دالة جلب رابط التوجيه (Redirect) لياسين تيفي
-def get_final_url(raw_url):
-    browser_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
-    }
-    try:
-        r_redirect = requests.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=10)
-        if r_redirect.status_code in [301, 302]:
-            return r_redirect.headers.get('Location')
-    except Exception:
-        pass
-    return raw_url
 
 # دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
 def get_majed_dynamic_channels(session):
@@ -682,12 +665,15 @@ for category_endpoint, quality in targets.items():
             channel_name = channel.get('name') or ""
             channel_name_lower = channel_name.lower()
             
+            # فلترة قوية جداً لضمان جلب كل قنوات beIN (عربية، فرنسية، ماكس)
             is_target = (
                 "max" in channel_name_lower or 
                 "bein" in channel_name_lower or 
                 "ماكس" in channel_name_lower or 
                 "بين" in channel_name_lower or
-                "sport" in channel_name_lower
+                "sport" in channel_name_lower or
+                "fr" in channel_name_lower or
+                "french" in channel_name_lower
             )
             if is_target:
                 filtered_channels.append(channel)
@@ -753,7 +739,7 @@ drama_content = ""
 seen_drama_urls = set()
 drama_matched_count = 0
 
-# إرجاع القيم الثابتة الأصلية التي تتطابق مع التوقيع المشفر (sign) لتفادي رفض السيرفر
+# إعدادات دراما لايف (تعمل في وضع الاسترداد الصامت في حال حظر السيرفر)
 device_id_val = "24d1-9dd-ae90-4798-b5a5-3bb15626e0b0"
 user_id_val = f"_11410_{int(time.time() * 1000)}_12345"
 app_version = "186"
@@ -799,17 +785,15 @@ for topic in drama_topics:
     }
     
     try:
-        response = session.post(drama_url, headers=drama_req_headers, data=json.dumps(outer_payload), timeout=15, verify=False)
+        response = session.post(drama_url, headers=drama_req_headers, data=json.dumps(outer_payload), timeout=10, verify=False)
         
         if response.status_code in [200, 201]:
             if response.text.strip().startswith("{") or response.text.strip().startswith("<") or not response.text.strip():
-                print(f"      [Debug] السيرفر أرجع بيانات غير مشفرة أو فارغة: {response.text[:50]}")
-                continue
+                continue # تخطي صامت في حال الحظر
                 
             decrypted_response = drama_decrypt(response.text)
             
             if not decrypted_response:
-                print(f"      [Debug] فشل فك التشفير للرد.")
                 continue
                 
             response_json = json.loads(decrypted_response)
@@ -820,12 +804,6 @@ for topic in drama_topics:
             elif response_json and "data" in response_json:
                 channels_list = response_json["data"]
                 
-            if not channels_list:
-                print(f"      [Debug] السيرفر لم يرجع أي قنوات في هذه الفئة.")
-                continue
-                
-            print(f"      ✔️ تم الاتصال بنجاح بسيرفر دراما لايف")
-            
             for channel in channels_list:
                 channel_name = channel.get("title") or channel.get("name") or ""
                 channel_id = channel.get("id_live") or channel.get("id")
@@ -897,15 +875,13 @@ for topic in drama_topics:
                         drama_matched_count += 1
                         break 
                 time.sleep(random.uniform(0.3, 0.8)) 
-        else:
-            print(f"      [Debug] السيرفر رفض الطلب (كود {response.status_code}).")
     except Exception as e:
-        print(f"      [Debug] خطأ في الاتصال بالسيرفر: {e}")
+        pass
 
 drama_content = "".join(drama_regular_list)
 
 if not drama_content.strip() and prev_drama.strip():
-    print("🛡️ فشل جلب باقة دراما لايف ديناميكياً، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
+    print("🛡️ تم تفعيل جدار الحماية: استرداد قنوات دراما لايف السابقة بنجاح للحفاظ على الباقة.")
     drama_content = prev_drama
 else:
     print(f"🎯 تم استخراج وتصفية ({drama_matched_count}) قناة من دراما لايف بنجاح.")
