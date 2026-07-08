@@ -60,21 +60,18 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
             continue
     return None
 
-# دالة جلب رابط التوجيه المباشر (Redirect) لحل مشكلة تشغيله على الريسيفرات والمشغلات
+# دالة جلب رابط التوجيه (تُستخدم فقط كاحتياط أو لأغراض الفحص والتحليل)
 def get_final_url(raw_url):
     browser_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
         "Referer": "https://x.com/"
     }
     try:
-        # إيقاف التوجيه التلقائي للحصول على موقع البث المباشر الفعلي من ترويسة Location
         r_redirect = requests.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=10)
         if r_redirect.status_code in [301, 302]:
-            final_target = r_redirect.headers.get('Location')
-            if final_target:
-                return final_target
-    except Exception as e:
-        print(f"⚠️ فشل تتبع التوجيه للرابط {raw_url}: {e}")
+            return r_redirect.headers.get('Location')
+    except Exception:
+        pass
     return raw_url
 
 # دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
@@ -488,11 +485,9 @@ for category_endpoint, quality in targets.items():
                     else:
                         display_name = f"{channel_name} {quality} (S{stream_idx + 1})"
                         
-                    # جلب الرابط المباشر الفعلي من الـ Redirect قبل وضعه في القائمة
-                    # هذا يحل تماماً مشكلة فقدان الترويسات في أجهزة الريسيفر والمشغلات
-                    direct_url = get_final_url(final_url)
-                    
-                    final_url_with_headers = f"{direct_url}|User-Agent={ua_value}&Referer={referer_value}&Origin={origin_value}"
+                    # تم الحفاظ هنا على الرابط الموزع الأصلي (re.ycn-redirect.buzz) بدلاً من فك التوجيه
+                    # هذا الإجراء يمنع توقف القنوات بسبب تغير السيرفر المباشر أو انتهاء صلاحية التوكن السريعة
+                    final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}&Origin={origin_value}"
                     
                     # كتابة ترويسة EXTVLCOPT القياسية وتذييل الـ Pipe لتعمل القنوات بنسبة 100% على كافة الأجهزة
                     yacine_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
@@ -500,7 +495,7 @@ for category_endpoint, quality in targets.items():
                     yacine_content += f'#EXTVLCOPT:http-referrer={referer_value}\n'
                     yacine_content += f'#EXTVLCOPT:http-origin={origin_value}\n'
                     yacine_content += f'{final_url_with_headers}\n'
-                    print(f"      ✔️ نجاح استخراج السيرفر المباشر: {display_name}")
+                    print(f"      ✔️ نجاح إضافة رابط الموزع: {display_name}")
             
             # تأخير عشوائي ذكي (Jitter) يتراوح بين 0.4 و 1.2 ثانية لتفادي كشف السكربت كـ Bot أو حظر الـ IP
             time.sleep(random.uniform(0.4, 1.2))
@@ -526,7 +521,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة ونظيفة وجاهزة للعمل على الريسيفر.")
+    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن موجهة بشكل صحيح وجاهزة للعمل على الريسيفر وVLC.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
-   
