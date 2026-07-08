@@ -60,17 +60,21 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
             continue
     return None
 
-# دالة جلب رابط التوجيه (Redirect) لياسين تيفي
+# دالة جلب رابط التوجيه المباشر (Redirect) لحل مشكلة تشغيله على الريسيفرات والمشغلات
 def get_final_url(raw_url):
     browser_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+        "Referer": "https://x.com/"
     }
     try:
+        # إيقاف التوجيه التلقائي للحصول على موقع البث المباشر الفعلي من ترويسة Location
         r_redirect = requests.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=10)
         if r_redirect.status_code in [301, 302]:
-            return r_redirect.headers.get('Location')
-    except Exception:
-        pass
+            final_target = r_redirect.headers.get('Location')
+            if final_target:
+                return final_target
+    except Exception as e:
+        print(f"⚠️ فشل تتبع التوجيه للرابط {raw_url}: {e}")
     return raw_url
 
 # دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
@@ -102,7 +106,7 @@ def extract_static_channels(m3u_content):
     current_channel_block = []
     
     exclude_keywords = [
-        "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
+        "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "re.ycn-redirect.buzz", "BEIN MAX YACINE TV",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live"
     ]
 
@@ -411,10 +415,10 @@ yacine_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
-# تصحيح الـ User-Agent وإعداد ترويسات الحماية
+# تصحيح وإعداد ترويسات الحماية والـ Referer المطلوب لمنصة X ومواقع التوجيه الحديثة
 ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
-referer_value = "https://re.ycn-redirect.com/"
-origin_value = "https://re.ycn-redirect.com"
+referer_value = "https://x.com/"
+origin_value = "https://x.com"
 
 yacine_content = ""
 for category_endpoint, quality in targets.items():
@@ -484,7 +488,11 @@ for category_endpoint, quality in targets.items():
                     else:
                         display_name = f"{channel_name} {quality} (S{stream_idx + 1})"
                         
-                    final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}&Origin={origin_value}"
+                    # جلب الرابط المباشر الفعلي من الـ Redirect قبل وضعه في القائمة
+                    # هذا يحل تماماً مشكلة فقدان الترويسات في أجهزة الريسيفر والمشغلات
+                    direct_url = get_final_url(final_url)
+                    
+                    final_url_with_headers = f"{direct_url}|User-Agent={ua_value}&Referer={referer_value}&Origin={origin_value}"
                     
                     # كتابة ترويسة EXTVLCOPT القياسية وتذييل الـ Pipe لتعمل القنوات بنسبة 100% على كافة الأجهزة
                     yacine_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
@@ -492,7 +500,7 @@ for category_endpoint, quality in targets.items():
                     yacine_content += f'#EXTVLCOPT:http-referrer={referer_value}\n'
                     yacine_content += f'#EXTVLCOPT:http-origin={origin_value}\n'
                     yacine_content += f'{final_url_with_headers}\n'
-                    print(f"      ✔️ نجاح استخراج السيرفر: {display_name}")
+                    print(f"      ✔️ نجاح استخراج السيرفر المباشر: {display_name}")
             
             # تأخير عشوائي ذكي (Jitter) يتراوح بين 0.4 و 1.2 ثانية لتفادي كشف السكربت كـ Bot أو حظر الـ IP
             time.sleep(random.uniform(0.4, 1.2))
@@ -521,4 +529,4 @@ if update_response.status_code == 200:
     print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة ونظيفة وجاهزة للعمل على الريسيفر.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
-
+   
