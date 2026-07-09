@@ -5,7 +5,6 @@ import time
 import os
 import re
 import random
-import urllib.parse
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
@@ -19,6 +18,11 @@ YACINE_DOMAINS = [
     "https://ver3.yacinelive.com",
     "https://v31.yacinelive.com"
 ]
+
+# ترويسات الحماية والـ User-Agent المعتمد لمحاكاة التصفح الحقيقي بنجاح
+UA_VALUE = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+REFERER_VALUE = "https://x.com/"
+ORIGIN_VALUE = "https://x.com"
 
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
 def decrypt_yacine(encrypted_data, header_t):
@@ -60,25 +64,44 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
             continue
     return None
 
-# دالة جلب رابط التوجيه (Redirect) لياسين تيفي
-def get_final_url(raw_url):
+# دالة جلب رابط التوجيه المباشر (تتبع الـ 302 والحصول على السيرفر الفعلي الفعال لتجنب مشاكل VLC)
+def get_final_url(session, raw_url):
     browser_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+        "User-Agent": UA_VALUE,
+        "Referer": REFERER_VALUE
     }
     try:
-        r_redirect = requests.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=10)
+        r_redirect = session.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=8)
         if r_redirect.status_code in [301, 302]:
-            return r_redirect.headers.get('Location')
+            final_location = r_redirect.headers.get('Location')
+            if final_location:
+                return final_location
+    except Exception as e:
+        print(f"⚠️ فشل جلب التوجيه الفعلي للرابط {raw_url}: {e}")
+    return raw_url
+
+# دالة فحص صحة روابط البث المباشر والتأكد من أنها نشطة وشغالة حالياً
+def validate_stream_url(session, url):
+    headers = {
+        "User-Agent": UA_VALUE,
+        "Referer": REFERER_VALUE
+    }
+    try:
+        # استخدام GET مع استدعاء دفق البيانات stream=True للفحص السريع دون تحميل ملف الفيديو بالكامل
+        response = session.get(url, headers=headers, stream=True, timeout=4)
+        if response.status_code in [200, 302]:
+            response.close()
+            return True
     except Exception:
         pass
-    return raw_url
+    return False
 
 # دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
 def get_majed_dynamic_channels(session):
     timestamp = int(time.time() * 1000)
     config_url = f"http://majed-koora.live/config.json?v={timestamp}"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+        "User-Agent": UA_VALUE,
         "Referer": "http://majed-koora.live/"
     }
     try:
@@ -102,7 +125,7 @@ def extract_static_channels(m3u_content):
     current_channel_block = []
     
     exclude_keywords = [
-        "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "BEIN MAX YACINE TV",
+        "def.yacinelive.com", "metava.online", "re.ycn-redirect.com", "re.ycn-redirect.buzz", "BEIN MAX YACINE TV",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live"
     ]
 
@@ -196,7 +219,7 @@ def matches_kids(channel_name):
     return None
 
 
-# 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
+# 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية وحفظها احتياطياً
 print("📂 جاري جلب محتوى الـ Gist الحالي للنسخ الاحتياطي وحفظ القنوات...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
 gist_headers = {
@@ -216,7 +239,7 @@ try:
         current_content = gist_data['files'][filename]['content']
         
         static_clean = extract_static_channels(current_content)
-        print("✔️ تم تحديد القنوات اليدوية بنجاح.")
+        print("✔️ تم تحديد وحفظ القنوات اليدوية والثابتة بنجاح.")
     else:
         print(f"❌ فشل جلب الـ Gist الحالي. كود الحالة: {gist_response.status_code}")
         exit(1)
@@ -239,7 +262,7 @@ prev_yacine = extract_section_by_headers(current_content, headers_list[2], heade
 session = create_session()
 final_m3u_content = ""
 
-# 2. كشف وتجهيز باقة قنوات LIVE المباشرة ديناميكياً
+# 2. كشف وتجهيز باقة قنوات LIVE المباشرة ديناميكياً مع حماية الـ Fail-safe
 print("\n⚽ جاري كشف وتجهيز مجموعة قنوات LIVE المباشرة...")
 live_separator = "# ==================== مجموعة قنوات LIVE ===================="
 
@@ -261,13 +284,13 @@ try:
 except Exception as e:
     print(f"⚠️ خطأ أثناء تحديث باقة LIVE: {e}")
 
-# تعويض وقائي ذكي لباقة LIVE
+# تعويض وقائي ذكي لباقة LIVE في حال فشل سحبها
 if not live_content.strip() and prev_live.strip():
     print("🛡️ فشل جلب باقة LIVE، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     live_content = prev_live
 
 
-# 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV)
+# 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV) مع حماية الـ Fail-safe
 print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
 basha_separator = "# ==================== مجموعة قنوات AL BASHA TV ===================="
 basha_api_url = "https://albashatv.site/api.php"
@@ -281,10 +304,8 @@ use_basha_proxy = check_basha_proxy_status(session)
 basha_payloads = ["method=o6&event=view", "method=o2&event=view"]
 basha_content = ""
 
-# فصل قنوات الأطفال لتظهر في المقدمة دائماً
 kids_channels_list = []
 regular_channels_list = []
-
 seen_basha_urls = set() 
 matched_count = 0
 
@@ -314,7 +335,6 @@ for payload in basha_payloads:
                 if any(tag in channel_name_lower for tag in exclude_tags):
                     continue
                 
-                # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلوبة أولاً
                 kids_match = matches_kids(channel_name)
                 if kids_match:
                     if use_basha_proxy:
@@ -331,9 +351,8 @@ for payload in basha_payloads:
                     kids_channels_list.append(entry)
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
-                    continue # الانتقال للقناة التالية فور مطابقة باقة الأطفال لعدم تكرارها
+                    continue 
                 
-                # وإلا نتابع تصفية القنوات العادية والـ Premium الأخرى
                 is_bein = "bein" in channel_name_lower
                 
                 is_arabic_premium = False
@@ -382,10 +401,9 @@ for payload in basha_payloads:
     except Exception as e:
         print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
 
-# دمج باقة الأطفال في مقدمة باقة الباشا تيفي تليها القنوات العادية الأخرى
 basha_content = "".join(kids_channels_list) + "".join(regular_channels_list)
 
-# تعويض وقائي ذكي لباقة الباشا تيفي في حال فشل الاتصال المؤقت
+# تعويض وقائي ذكي لباقة الباشا تيفي في حال فشل جلبها
 if not basha_content.strip() and prev_basha.strip():
     print("🛡️ فشل جلب باقة الباشا ديناميكياً، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     basha_content = prev_basha
@@ -393,11 +411,11 @@ else:
     print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح (بما في ذلك قنوات الأطفال بالمقدمة).")
 
 
-# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) ديناميكياً بالكامل
+# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) ديناميكياً بالكامل مع الفصل والفحص وصيانة الـ Fail-safe
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
-# الفئات المستهدفة: 90 لجودة FHD، و 89 لجودة HD، و 91 لجودة SD المنخفضة
+# الفئات المستهدفة: 90 لجودة FHD، و 89 لجودة HD، و 91 لجودة SD
 targets = {
     "/api/categories/90/channels": "FHD",
     "/api/categories/89/channels": "HD",
@@ -411,101 +429,131 @@ yacine_headers = {
     "User-Agent": "okhttp/4.12.0"
 }
 
-# تصحيح الـ User-Agent وإعداد ترويسات الحماية
-ua_value = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
-referer_value = "https://re.ycn-redirect.com/"
-origin_value = "https://re.ycn-redirect.com"
-
+yacine_lines = []
 yacine_content = ""
+yacine_failed = False
+total_yacine_channels_extracted = 0
+
 for category_endpoint, quality in targets.items():
     print(f"🔄 جاري سحب باقة ياسين بجودة {quality}...")
     channels_data = fetch_and_decrypt_yacine_dynamic(session, category_endpoint, yacine_headers)
     
-    if channels_data and 'data' in channels_data:
-        channels_list = channels_data['data']
+    if not channels_data or 'data' not in channels_data:
+        print(f"⚠️ فشل جلب البيانات للفئة {quality} أو السيرفر مغلق للصيانة.")
+        continue
         
-        # 1. تصفية قنوات BEIN سبورت وماكس المستهدفة أولاً
-        filtered_channels = []
-        for channel in channels_list:
-            channel_name = channel.get('name') or ""
-            channel_name_lower = channel_name.lower()
-            
-            is_target = (
-                "max" in channel_name_lower or 
-                "bein" in channel_name_lower or 
-                "ماكس" in channel_name_lower or 
-                "بين" in channel_name_lower or
-                "سبورت" in channel_name_lower
-            )
-            if is_target:
-                filtered_channels.append(channel)
-                
-        # 2. ترتيب القنوات تصاعدياً ورقمياً لضمان الفرز من 1 إلى 5 بشكل منظم
-        def extract_number(name):
-            nums = re.findall(r'\d+', name)
-            return int(nums[0]) if nums else 999
-            
-        filtered_channels.sort(key=lambda x: extract_number(x.get('name', '')))
+    channels_list = channels_data.get('data', [])
+    if not channels_list:
+        continue
         
-        # 3. البدء في استخراج الروابط وتصفية سيرفرات الـ DRM غير الشغالة
-        for index, channel in enumerate(filtered_channels):
-            channel_name = channel.get('name')
-            channel_id = channel.get('id')
+    filtered_channels = []
+    for channel in channels_list:
+        channel_name = channel.get('name') or ""
+        channel_name_lower = channel_name.lower()
+        
+        is_target = (
+            "max" in channel_name_lower or 
+            "bein" in channel_name_lower or 
+            "ماكس" in channel_name_lower or 
+            "بين" in channel_name_lower or
+            "سبورت" in channel_name_lower
+        )
+        if is_target:
+            filtered_channels.append(channel)
             
-            print(f"   ⏳ [{index + 1}/{len(filtered_channels)}] جاري استخراج: {channel_name}...")
-            channel_detail_endpoint = f"/api/channel/{channel_id}"
-            detail_data = fetch_and_decrypt_yacine_dynamic(session, channel_detail_endpoint, yacine_headers)
+    def extract_number(name):
+        nums = re.findall(r'\d+', name)
+        return int(nums[0]) if nums else 999
+        
+    filtered_channels.sort(key=lambda x: extract_number(x.get('name', '')))
+    
+    for index, channel in enumerate(filtered_channels):
+        channel_name = channel.get('name')
+        channel_id = channel.get('id')
+        
+        print(f"   ⏳ [{index + 1}/{len(filtered_channels)}] جاري استخراج قنوات {quality}: {channel_name}...")
+        channel_detail_endpoint = f"/api/channel/{channel_id}"
+        detail_data = fetch_and_decrypt_yacine_dynamic(session, channel_detail_endpoint, yacine_headers)
+        
+        if detail_data and 'data' in detail_data:
+            streams = detail_data.get('data', [])
             
-            if detail_data and 'data' in detail_data:
-                streams = detail_data['data']
+            valid_urls = []
+            for stream in streams:
+                raw_url = stream.get('url')
+                if not raw_url:
+                    continue
                 
-                # تصفية وفلترة السيرفرات الصالحة للريسيفر و VLC (استبعاد ملفات .mpd ومسارات cenc المحمية)
-                valid_urls = []
-                for stream in streams:
-                    raw_url = stream.get('url')
-                    if not raw_url:
-                        continue
+                if "/dash/.mpd" in raw_url:
+                    raw_url = raw_url.replace("/dash/.mpd", "/playlist.m3u8")
                     
-                    # تحويل روابط Redbee من mpd إلى m3u8 تلقائياً لضمان التوافق
-                    if "/dash/.mpd" in raw_url:
-                        raw_url = raw_url.replace("/dash/.mpd", "/playlist.m3u8")
-                        
-                    # استبعاد روابط DASH / DRM المشفرة بنظام Widevine لأنها مخصصة فقط لتطبيق ياسين وتتطلب مشغل مشفر
-                    if ".mpd" in raw_url.lower() or "cenc" in raw_url.lower() or "/dash/" in raw_url.lower():
-                        continue
-                        
-                    valid_urls.append(raw_url)
+                if ".mpd" in raw_url.lower() or "cenc" in raw_url.lower() or "/dash/" in raw_url.lower():
+                    continue
+                    
+                valid_urls.append(raw_url)
+            
+            for stream_idx, final_url in enumerate(valid_urls):
+                # 1. تتبع وفك التوجيه والحصول على السيرفر الفعلي المباشر
+                direct_url = get_final_url(session, final_url)
                 
-                # كتابة السيرفرات بالأسماء والتنسيق المرتب المطلوب
-                for stream_idx, final_url in enumerate(valid_urls):
-                    # التسمية النظيفة: السيرفر الأول يحمل اسم القناة مباشرة، والسيرفرات التالية يكتب بجانبها (S2) ثم (S3)...
+                # 2. فحص صحة روابط البث للتأكد من أنها شغالة حالياً (Pre-flight Check)
+                print(f"      🔍 فحص صحة السيرفر لـ {channel_name}...")
+                if not validate_stream_url(session, direct_url):
+                    print(f"      ❌ السيرفر {direct_url[:40]}... غير متاح أو متوقف حالياً. تم تجاوزه.")
+                    continue
+                
+                # 3. فصل قنوات الماكس عن قنوات البين سبورت العادية وترتيب التسميات
+                channel_name_lower = channel_name.lower()
+                if "max" in channel_name_lower or "ماكس" in channel_name_lower:
+                    group_title = "BEIN SPORTS MAX"
+                    clean_name = channel_name.replace("MAX", "").replace("ماكس", "").strip()
+                    clean_name = re.sub(r'\s+', ' ', clean_name)
                     if stream_idx == 0:
-                        display_name = f"{channel_name} {quality}"
+                        display_name = f"beIN Sports Max {clean_name} {quality}"
                     else:
-                        display_name = f"{channel_name} {quality} (S{stream_idx + 1})"
-                        
-                    final_url_with_headers = f"{final_url}|User-Agent={ua_value}&Referer={referer_value}&Origin={origin_value}"
-                    
-                    # كتابة ترويسة EXTVLCOPT القياسية وتذييل الـ Pipe لتعمل القنوات بنسبة 100% على كافة الأجهزة
-                    yacine_content += f'#EXTINF:-1 tvg-logo="" group-title="BEIN MAX YACINE TV", {display_name}\n'
-                    yacine_content += f'#EXTVLCOPT:http-user-agent={ua_value}\n'
-                    yacine_content += f'#EXTVLCOPT:http-referrer={referer_value}\n'
-                    yacine_content += f'#EXTVLCOPT:http-origin={origin_value}\n'
-                    yacine_content += f'{final_url_with_headers}\n'
-                    print(f"      ✔️ نجاح استخراج السيرفر: {display_name}")
-            
-            # تأخير عشوائي ذكي (Jitter) يتراوح بين 0.4 و 1.2 ثانية لتفادي كشف السكربت كـ Bot أو حظر الـ IP
-            time.sleep(random.uniform(0.4, 1.2))
+                        display_name = f"beIN Sports Max {clean_name} {quality} (S{stream_idx + 1})"
+                else:
+                    group_title = "BEIN SPORTS"
+                    clean_name = channel_name.replace("beIN", "").replace("بين", "").strip()
+                    clean_name = re.sub(r'\s+', ' ', clean_name)
+                    if stream_idx == 0:
+                        display_name = f"beIN Sports {clean_name} {quality}"
+                    else:
+                        display_name = f"beIN Sports {clean_name} {quality} (S{stream_idx + 1})"
+                
+                final_url_with_headers = f"{direct_url}|User-Agent={UA_VALUE}&Referer={REFERER_VALUE}&Origin={ORIGIN_VALUE}"
+                
+                # صياغة القنوات بالشكل المتوافق مع VLC وكافة أجهزة الاستقبال والريسيفرات
+                chan_entry = (
+                    f'#EXTINF:-1 tvg-logo="" group-title="{group_title}", {display_name}\n'
+                    f'#EXTVLCOPT:http-user-agent={UA_VALUE}\n'
+                    f'#EXTVLCOPT:http-referrer={REFERER_VALUE}\n'
+                    f'#EXTVLCOPT:http-origin={ORIGIN_VALUE}\n'
+                    f'{final_url_with_headers}\n'
+                )
+                yacine_lines.append(chan_entry)
+                total_yacine_channels_extracted += 1
+                print(f"      ✔️ تم جلب وتأكيد تشغيل: {display_name}")
+        
+        time.sleep(random.uniform(0.3, 0.8))
 
-# تعويض وقائي ذكي لباقة ياسين تيفي
-if not yacine_content.strip() and prev_yacine.strip():
-    print("🛡️ فشل جلب باقة ياسين تيفي، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
+yacine_content = "".join(yacine_lines)
+
+# 4. آلية الحماية والاحتفاظ الوقائي من الانهيار (Fail-Safe Mechanism)
+if total_yacine_channels_extracted == 0:
+    yacine_failed = True
+
+if yacine_failed and prev_yacine.strip():
+    print("\n🛡️ ⚠️ تنبيه هام: تطبيق ياسين تيفي مغلق حالياً أو الـ API لا تستجيب!")
+    print("🛡️ سيتم تلقائياً حماية واستعادة كامل باقة ياسين تيفي السابقة لمنع مسح القنوات وضمان تشغيلها.")
     yacine_content = prev_yacine
+else:
+    print(f"\n🎉 تم جلب وتصفية وتأكيد عمل ({total_yacine_channels_extracted}) قناة فعالّة كلياً.")
 
-# دمج المحتوى بالترتيب مع الحفاظ الكامل على قنواتك اليدوية
+
+# 5. دمج المحتوى بالترتيب مع قنواتك اليدوية وحفظ وتحديث الـ Gist الخاص بك
 final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
 
-# 5. تحديث الـ Gist الخاص بك
 print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
 update_data = {
     "files": {
@@ -518,6 +566,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة ونظيفة وجاهزة للعمل على الريسيفر.")
+    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة ونظيفة وصالحة للعمل على الريسيفر والكمبيوتر.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
