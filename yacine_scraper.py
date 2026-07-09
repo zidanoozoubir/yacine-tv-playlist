@@ -19,9 +19,8 @@ YACINE_DOMAINS = [
     "https://v31.yacinelive.com"
 ]
 
-# ترويسات الحماية والـ User-Agent المعتمد لضمان فك التوجيه بنجاح
+# ترويسة الحماية الوحيدة والأساسية المطلوبة لمحاكاة المتصفح الفعال
 UA_VALUE = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
-REFERER_VALUE = "https://x.com/"
 
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
 def decrypt_yacine(encrypted_data, header_t):
@@ -63,23 +62,6 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
             continue
     return None
 
-# دالة مدمجة وذكية للغاية: تفك التوجيه وتتحقق من صحة القناة في خطوة واحدة وبطلب واحد فقط لمنع الحظر
-def resolve_and_validate_yacine_stream(session, raw_url):
-    browser_headers = {
-        "User-Agent": UA_VALUE,
-        "Referer": REFERER_VALUE
-    }
-    try:
-        # إرسال طلب واحد صامت للموزع دون تتبع التوجيه تلقائياً لمنع الهدر
-        response = session.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=6)
-        if response.status_code in [301, 302]:
-            direct_url = response.headers.get('Location')
-            if direct_url:
-                return direct_url
-    except Exception as e:
-        print(f"⚠️ فشل الاتصال برابط التوجيه {raw_url[:50]}... بسبب: {e}")
-    return None
-
 # دالة ذكية لتجميل وتنظيف أسماء القنوات وتجنب التكرار بشكل آمن
 def clean_channel_name(name, is_max, quality):
     if not name:
@@ -101,7 +83,7 @@ def get_majed_dynamic_channels(session):
     timestamp = int(time.time() * 1000)
     config_url = f"http://majed-koora.live/config.json?v={timestamp}"
     headers = {
-        "User-Agent": UA_VALUE,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
         "Referer": "http://majed-koora.live/"
     }
     try:
@@ -182,7 +164,7 @@ def check_basha_proxy_status(session):
         print(f"⚠️ تم فحص البروكسي: فشل الاتصال ({e}).")
         return False
 
-# دالة ذكية لاستخراج الأقسام الحالية من الـ Gist لحمايتها في حال حدوث فشل مؤقت للـ API
+# دالة ذكية لاستخراج الأقسام الحالية من الـ Gist لحمايتها في حال حدوث عطل في الـ API
 def extract_section_by_headers(content, current_header, next_headers):
     if current_header not in content:
         return ""
@@ -218,7 +200,7 @@ def matches_kids(channel_name):
     return None
 
 
-# 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية وحفظها احتياطياً
+# 1. جلب المحتوى الحالي من الـ Gist للنسخ الاحتياطي وحفظ القنوات
 print("📂 جاري جلب محتوى الـ Gist الحالي للنسخ الاحتياطي وحفظ القنوات...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
 gist_headers = {
@@ -283,7 +265,6 @@ try:
 except Exception as e:
     print(f"⚠️ خطأ أثناء تحديث باقة LIVE: {e}")
 
-# تعويض وقائي ذكي لباقة LIVE في حال فشل سحبها
 if not live_content.strip() and prev_live.strip():
     print("🛡️ فشل جلب باقة LIVE، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     live_content = prev_live
@@ -402,7 +383,6 @@ for payload in basha_payloads:
 
 basha_content = "".join(kids_channels_list) + "".join(regular_channels_list)
 
-# تعويض وقائي ذكي لباقة الباشا تيفي في حال فشل جلبها
 if not basha_content.strip() and prev_basha.strip():
     print("🛡️ فشل جلب باقة الباشا ديناميكياً، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     basha_content = prev_basha
@@ -410,11 +390,10 @@ else:
     print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح (بما في ذلك قنوات الأطفال بالمقدمة).")
 
 
-# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) ديناميكياً بالكامل مع الفصل والتنظيف والتحقق وحماية الـ Fail-safe
+# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) - النسخة فائقة السرعة والمؤمنة لـ GitHub Actions
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
-# الفئات المستهدفة: 90 لجودة FHD، و 89 لجودة HD، و 91 لجودة SD
 targets = {
     "/api/categories/90/channels": "FHD",
     "/api/categories/89/channels": "HD",
@@ -493,16 +472,7 @@ for category_endpoint, quality in targets.items():
                     
                 valid_urls.append(raw_url)
             
-            for stream_idx, final_url in enumerate(valid_urls):
-                # تتبع وفك التوجيه والحصول على السيرفر الفعال والتحقق منه في "خطوة واحدة صامتة"
-                # هذه الميزة البرمجية المبتكرة تمنع حظر الـ IP بشكل كامل وتسرع السكربت بنسبة 50%
-                print(f"      🔍 فحص صحة وتتبع توجيه السيرفر لـ {channel_name}...")
-                direct_url = resolve_and_validate_yacine_stream(session, final_url)
-                
-                if not direct_url:
-                    print(f"      ❌ السيرفر غير متاح أو متوقف حالياً. تم تجاوزه.")
-                    continue
-                
+            for stream_idx, raw_url in enumerate(valid_urls):
                 # تحديد ما إذا كانت القناة تتبع Max أو الباقة الأساسية مع تنظيف وتجميل الأسماء بشكل احترافي
                 channel_name_lower = channel_name.lower()
                 is_max = "max" in channel_name_lower or "ماكس" in channel_name_lower
@@ -513,8 +483,8 @@ for category_endpoint, quality in targets.items():
                 
                 group_title = "BEIN SPORTS MAX" if is_max else "BEIN SPORTS"
                 
-                # صيغة الرابط الفعالة بنسبة 100% بدون أي ترويسات معرقلة تسبب خطأ الـ 403
-                final_url_with_headers = f"{direct_url}|User-Agent={UA_VALUE}"
+                # إبقاء رابط الموزع الأصلي وكتابته بالصيغة المباشرة والسليمة التي نجحت في الاختبارات محلياً
+                final_url_with_headers = f"{raw_url}|User-Agent={UA_VALUE}"
                 
                 # صياغة القنوات المتوافقة تماماً مع VLC وكافة أجهزة الاستقبال والريسيفرات
                 chan_entry = (
@@ -524,13 +494,13 @@ for category_endpoint, quality in targets.items():
                 )
                 yacine_lines.append(chan_entry)
                 total_yacine_channels_extracted += 1
-                print(f"      ✔️ تم جلب وتأكيد تشغيل: {display_name}")
         
-        time.sleep(random.uniform(0.3, 0.7))
+        # تأخير عشوائي سريع جداً لمنع تعليق السكربت وتسريع إنهاء العمل
+        time.sleep(random.uniform(0.1, 0.3))
 
 yacine_content = "".join(yacine_lines)
 
-# 4. آلية الحماية والاحتفاظ الوقائي من الانهيار والمسح (Fail-Safe Mechanism)
+# 4. آلية الحماية والاحتفاظ الوقائي من الانهيار والمسح (Fail-Safe Mechanism) في حال الصيانة أو عطل الشبكة
 if total_yacine_channels_extracted == 0:
     yacine_failed = True
 
@@ -557,6 +527,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة، نظيفة وبأسمائها الصحيحة تماماً وجاهزة للعمل.")
+    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن موجهة، نظيفة وبأسمائها الصحيحة تماماً وجاهزة للعمل.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
