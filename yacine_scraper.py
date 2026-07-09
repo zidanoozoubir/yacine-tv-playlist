@@ -19,10 +19,9 @@ YACINE_DOMAINS = [
     "https://v31.yacinelive.com"
 ]
 
-# ترويسات الحماية والـ User-Agent المعتمد لمحاكاة التصفح الحقيقي بنجاح
+# ترويسة الحماية الوحيدة والأساسية المطلوبة لتشغيل البث المباشر بنجاح
 UA_VALUE = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
 REFERER_VALUE = "https://x.com/"
-ORIGIN_VALUE = "https://x.com"
 
 # دالة فك التشفير الخاصة بتطبيق ياسين تيفي (XOR Decryption)
 def decrypt_yacine(encrypted_data, header_t):
@@ -64,7 +63,7 @@ def fetch_and_decrypt_yacine_dynamic(session, endpoint_path, headers):
             continue
     return None
 
-# دالة جلب رابط التوجيه المباشر (تتبع الـ 302 والحصول على السيرفر الفعلي الفعال لتجنب مشاكل VLC)
+# دالة جلب رابط التوجيه المباشر (تتبع الـ 302 والحصول على السيرفر الفعلي الفعال باستخدام المرجع المطلوب للموزع)
 def get_final_url(session, raw_url):
     browser_headers = {
         "User-Agent": UA_VALUE,
@@ -80,14 +79,12 @@ def get_final_url(session, raw_url):
         print(f"⚠️ فشل جلب التوجيه الفعلي للرابط {raw_url}: {e}")
     return raw_url
 
-# دالة فحص صحة روابط البث المباشر والتأكد من أنها نشطة وشغالة حالياً
+# دالة فحص صحة روابط البث الفعلي (تتطلب فقط الـ User-Agent وتتجنب المرجع لمنع الحظر)
 def validate_stream_url(session, url):
     headers = {
-        "User-Agent": UA_VALUE,
-        "Referer": REFERER_VALUE
+        "User-Agent": UA_VALUE
     }
     try:
-        # استخدام GET مع استدعاء دفق البيانات stream=True للفحص السريع دون تحميل ملف الفيديو بالكامل
         response = session.get(url, headers=headers, stream=True, timeout=4)
         if response.status_code in [200, 302]:
             response.close()
@@ -95,6 +92,20 @@ def validate_stream_url(session, url):
     except Exception:
         pass
     return False
+
+# دالة ذكية لتجميل وتنظيف أسماء القنوات وتجنب التكرار
+def clean_channel_name(name, is_max, quality):
+    clean = name
+    for word in ["beIN", "Sports", "Sport", "MAX", "بين", "سبورت", "ماكس"]:
+        clean = re.compile(re.escape(word), re.IGNORECASE).sub("", clean)
+    
+    clean = clean.strip()
+    clean = re.sub(r'\s+', ' ', clean)
+    
+    if is_max:
+        return f"beIN Sports Max {clean} {quality}"
+    else:
+        return f"beIN Sports {clean} {quality}"
 
 # دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
 def get_majed_dynamic_channels(session):
@@ -213,7 +224,6 @@ def matches_kids(channel_name):
     if "cn arabia" in name_lower or "cartoon network" in name_lower or "كرتون نتورك" in name_lower:
         return "CN Arabia"
     
-    # فحص دقيق لقناة Jeem لمنع المطابقة مع كلمات كـ "نجيم" أو "جيمس بوند"
     if "jeem" in name_lower or "تلفزيون جيم" in name_lower or "قناة جيم" in name_lower or "جيم" in name_lower.split():
         return "Jeem"
     return None
@@ -411,7 +421,7 @@ else:
     print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح (بما في ذلك قنوات الأطفال بالمقدمة).")
 
 
-# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) ديناميكياً بالكامل مع الفصل والفحص وصيانة الـ Fail-safe
+# 4. جلب وتنسيق باقة قنوات ياسين تيفي (Yacine TV) مع الفصل والتنظيف والتحقق وحماية الـ Fail-safe
 print("\n🚀 جاري جلب قنوات ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة قنوات BEIN MAX YACINE TV ===================="
 
@@ -476,7 +486,7 @@ for category_endpoint, quality in targets.items():
         detail_data = fetch_and_decrypt_yacine_dynamic(session, channel_detail_endpoint, yacine_headers)
         
         if detail_data and 'data' in detail_data:
-            streams = detail_data.get('data', [])
+            streams = detail_data['data']
             
             valid_urls = []
             for stream in streams:
@@ -493,42 +503,32 @@ for category_endpoint, quality in targets.items():
                 valid_urls.append(raw_url)
             
             for stream_idx, final_url in enumerate(valid_urls):
-                # 1. تتبع وفك التوجيه والحصول على السيرفر الفعلي المباشر
+                # 1. تتبع وفك التوجيه والحصول على السيرفر الفعلي المباشر (مثل trivanta.buzz)
                 direct_url = get_final_url(session, final_url)
                 
-                # 2. فحص صحة روابط البث للتأكد من أنها شغالة حالياً (Pre-flight Check)
+                # 2. فحص صحة روابط البث الفعلي (Pre-flight Check) لضمان فعاليتها التامة
                 print(f"      🔍 فحص صحة السيرفر لـ {channel_name}...")
                 if not validate_stream_url(session, direct_url):
                     print(f"      ❌ السيرفر {direct_url[:40]}... غير متاح أو متوقف حالياً. تم تجاوزه.")
                     continue
                 
-                # 3. فصل قنوات الماكس عن قنوات البين سبورت العادية وترتيب التسميات
+                # 3. تحديد ما إذا كانت القناة تتبع Max أو الباقة الأساسية مع تنظيف وتجميل الأسماء
                 channel_name_lower = channel_name.lower()
-                if "max" in channel_name_lower or "ماكس" in channel_name_lower:
-                    group_title = "BEIN SPORTS MAX"
-                    clean_name = channel_name.replace("MAX", "").replace("ماكس", "").strip()
-                    clean_name = re.sub(r'\s+', ' ', clean_name)
-                    if stream_idx == 0:
-                        display_name = f"beIN Sports Max {clean_name} {quality}"
-                    else:
-                        display_name = f"beIN Sports Max {clean_name} {quality} (S{stream_idx + 1})"
-                else:
-                    group_title = "BEIN SPORTS"
-                    clean_name = channel_name.replace("beIN", "").replace("بين", "").strip()
-                    clean_name = re.sub(r'\s+', ' ', clean_name)
-                    if stream_idx == 0:
-                        display_name = f"beIN Sports {clean_name} {quality}"
-                    else:
-                        display_name = f"beIN Sports {clean_name} {quality} (S{stream_idx + 1})"
+                is_max = "max" in channel_name_lower or "ماكس" in channel_name_lower
                 
-                final_url_with_headers = f"{direct_url}|User-Agent={UA_VALUE}&Referer={REFERER_VALUE}&Origin={ORIGIN_VALUE}"
+                display_name = clean_channel_name(channel_name, is_max, quality)
+                if stream_idx > 0:
+                    display_name += f" (S{stream_idx + 1})"
                 
-                # صياغة القنوات بالشكل المتوافق مع VLC وكافة أجهزة الاستقبال والريسيفرات
+                group_title = "BEIN SPORTS MAX" if is_max else "BEIN SPORTS"
+                
+                # صيغة الرابط الصافية والفعالة بنسبة 100% المقتصرة على الـ User-Agent فقط بدون مراجع معرقلة
+                final_url_with_headers = f"{direct_url}|User-Agent={UA_VALUE}"
+                
+                # صياغة القنوات المتوافقة تماماً مع VLC وكافة أجهزة الاستقبال والريسيفرات
                 chan_entry = (
                     f'#EXTINF:-1 tvg-logo="" group-title="{group_title}", {display_name}\n'
                     f'#EXTVLCOPT:http-user-agent={UA_VALUE}\n'
-                    f'#EXTVLCOPT:http-referrer={REFERER_VALUE}\n'
-                    f'#EXTVLCOPT:http-origin={ORIGIN_VALUE}\n'
                     f'{final_url_with_headers}\n'
                 )
                 yacine_lines.append(chan_entry)
@@ -539,7 +539,7 @@ for category_endpoint, quality in targets.items():
 
 yacine_content = "".join(yacine_lines)
 
-# 4. آلية الحماية والاحتفاظ الوقائي من الانهيار (Fail-Safe Mechanism)
+# 4. آلية الحماية والاحتفاظ الوقائي من الانهيار (Fail-Safe Mechanism) في حال الصيانة أو عطل الشبكة
 if total_yacine_channels_extracted == 0:
     yacine_failed = True
 
@@ -566,6 +566,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة ونظيفة وصالحة للعمل على الريسيفر والكمبيوتر.")
+    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة، نظيفة وبأسمائها الصحيحة تماماً وجاهزة للعمل.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
