@@ -152,7 +152,6 @@ def matches_kids(channel_name):
     if "cn arabia" in name_lower or "cartoon network" in name_lower or "كرتون نتورك" in name_lower:
         return "CN Arabia"
     
-    # فحص دقيق لقناة Jeem لمنع المطابقة مع كلمات كـ "نجيم" أو "جيمس بوند"
     if "jeem" in name_lower or "تلفزيون جيم" in name_lower or "قناة جيم" in name_lower or "جيم" in name_lower.split():
         return "Jeem"
     return None
@@ -355,7 +354,7 @@ else:
     print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح (بما في ذلك قنوات الأطفال بالمقدمة).")
 
 
-# 4. جلب وتنسيق قنوات Yalla Live للمباريات الجارية حالياً بسيرفرات مايكروسوفت المستقرة
+# 4. جلب وتنسيق قنوات Yalla Live للمباريات الجارية حالياً بسيرفرات مايكروسوفت المستقرة بالصوت والصورة
 print("\n🚀 جاري جلب وتحديث باقة قنوات Yalla Live...")
 yalla_separator = "# ==================== قنوات YALLA LIVE (مباريات جارية) ===================="
 
@@ -388,8 +387,8 @@ try:
                 num_match = re.findall(r'\d+', server_val)
                 server_num = num_match[0] if num_match else "1"
                 
-                # تركيب رابط البث المباشر المفتوح والثابت بنسبة 100% بدون أي ترويسات حظر على خادم Azure
-                stream_url = f"https://yyyylive{server_num}.blob.core.windows.net/live/stream/tracks-v1/index.fmp4.m3u8"
+                # تركيب ملف البث الرئيسي المشترك index.fmp4.m3u8 لدمج الصوت مع الصورة تلقائياً ليعملا معاً بثبات
+                stream_url = f"https://yyyylive{server_num}.blob.core.windows.net/live/stream/index.fmp4.m3u8"
                 
                 # صياغة مسمى مميز وواضح لوالدك يسهل عليه اختيار المباراة
                 display_name = f"{channel_name} - {team1} VS {team2} ({league})"
@@ -432,6 +431,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة وجاهزة للعمل على كافة أجهزة منزلك ومنزل والدك.")
+    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة وجاهزة للعمل بالصوت والصورة على كافة أجهزة منزلك ومنزل والدك.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
