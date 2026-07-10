@@ -35,27 +35,63 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# دالة لكشف واستخراج قنوات ماجد سبورت النشطة تلقائياً من ملف الإعدادات
-def get_majed_dynamic_channels(session):
+# دالة ذكية ومطورة كلياً لجلب قنوات ماجد سبورت بالصوت والصورة وبمسميات المباريات الجارية
+def get_majed_sport_channels(session):
     timestamp = int(time.time() * 1000)
-    config_url = f"http://majed-koora.live/config.json?v={timestamp}"
+    config_url = f"https://www.majed-koora.live/config.json?v={timestamp}"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-        "Referer": "http://majed-koora.live/"
+        "User-Agent": "MajedSportApp",
+        "Accept": "application/json"
     }
+    majed_lines = []
     try:
         response = session.get(config_url, headers=headers, timeout=10)
         if response.status_code == 200:
-            found = re.findall(r'majed[a-zA-Z0-9_-]+', response.text)
-            channels = [c for c in found if "koora" not in c.lower() and "live" not in c.lower()]
-            if channels:
-                unique_channels = list(dict.fromkeys(channels))
-                print(f"🔍 تم اكتشاف القنوات النشطة من ملف الإعدادات: {unique_channels}")
-                return unique_channels
+            data = response.json()
+            
+            # مفاتيح جودات البث والسيرفرات الاحتياطية في التصميم الجديد للـ JSON
+            stream_keys = {
+                "stream_high": "Majed Sport FHD",
+                "stream_medium": "Majed Sport HD",
+                "stream_low": "Majed Sport SD",
+                "stream_reserve": "Majed Sport Reserve 1",
+                "stream_reserve2": "Majed Sport Reserve 2"
+            }
+            
+            # قراءة معلومات المباراة الجارية لدمجها تلقائياً مع مسمى القنوات
+            match_info = ""
+            matches = data.get("matches", [])
+            if matches:
+                first_match = matches[0]
+                team1 = first_match.get("team1", "")
+                team2 = first_match.get("team2", "")
+                comp = first_match.get("comp", "")
+                if team1 and team2:
+                    match_info = f" - {team1} VS {team2} ({comp})"
+            
+            # الترويسة الأمنية الفعالة والمثبتة لتشغيل بث ماجد سبورت في الريسيفرات و VLC
+            vlc_ua = "VLC/3.0.16 LibVLC/3.0.16"
+            
+            for key, display_name in stream_keys.items():
+                stream_url = data.get(key, "").strip()
+                if stream_url:
+                    # تنظيف الروابط من التشفيرات المائلة الصادرة من الـ API
+                    stream_url = stream_url.replace("\\/", "/").strip()
+                    
+                    final_url_with_headers = f"{stream_url}|User-Agent={vlc_ua}"
+                    full_display_name = f"{display_name}{match_info}"
+                    
+                    entry = (
+                        f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {full_display_name}\n'
+                        f'#EXTVLCOPT:http-user-agent={vlc_ua}\n'
+                        f'{final_url_with_headers}\n'
+                    )
+                    majed_lines.append(entry)
+                    print(f"      ⚽ تم جلب وتأكيد قناة ماجد سبورت: {full_display_name}")
+                    
     except Exception as e:
-        print(f"⚠️ فشل جلب ملف الإعدادات config.json من ماجد سبورت: {e}")
-    
-    return ["majedsports1"]
+        print(f"⚠️ فشل جلب باقة ماجد سبورت بتصميمها الجديد بسبب: {e}")
+    return "".join(majed_lines)
 
 # دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
 def extract_static_channels(m3u_content):
@@ -65,7 +101,7 @@ def extract_static_channels(m3u_content):
     
     exclude_keywords = [
         "api.apipremiumcdn.xyz", "yyyylive", "YALLA LIVE",
-        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live"
+        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "modyleech.workers.dev"
     ]
 
     for line in lines:
@@ -157,7 +193,7 @@ def matches_kids(channel_name):
     return None
 
 
-# 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية
+# 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية وحفظها احتياطياً
 print("📂 جاري جلب محتوى الـ Gist الحالي للنسخ الاحتياطي وحفظ القنوات...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
 gist_headers = {
@@ -177,7 +213,7 @@ try:
         current_content = gist_data['files'][filename]['content']
         
         static_clean = extract_static_channels(current_content)
-        print("✔️ تم تحديد القنوات اليدوية بنجاح.")
+        print("✔️ تم تحديد وحفظ القنوات اليدوية والثابتة بنجاح.")
     else:
         print(f"❌ فشل جلب الـ Gist الحالي. كود الحالة: {gist_response.status_code}")
         exit(1)
@@ -200,29 +236,13 @@ prev_yalla = extract_section_by_headers(current_content, headers_list[2], header
 session = create_session()
 final_m3u_content = ""
 
-# 2. كشف وتجهيز باقة قنوات LIVE المباشرة ديناميكياً
+# 2. كشف وتجهيز باقة قنوات LIVE المباشرة بتصميمها وسيرفراتها الجديدة كلياً بالصوت والصورة
 print("\n⚽ جاري كشف وتجهيز مجموعة قنوات LIVE المباشرة...")
 live_separator = "# ==================== مجموعة قنوات LIVE ===================="
 
-live_content = ""
-try:
-    active_majed_channels = get_majed_dynamic_channels(session)
-    timestamp = int(time.time() * 1000)
+live_content = get_majed_sport_channels(session)
 
-    for channel in active_majed_channels:
-        live_url = f"http://majed-koora.live/stream.php?channel={channel}&file=stream.m3u8&v={timestamp}"
-        display_name = channel.replace("majedsports", "Majed Sport ").title()
-        
-        live_content += (
-            f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {display_name} FHD\n'
-            f'{live_url}\n'
-            f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {display_name} HD\n'
-            f'{live_url}\n'
-        )
-except Exception as e:
-    print(f"⚠️ خطأ أثناء تحديث باقة LIVE: {e}")
-
-# تعويض وقائي ذكي لباقة LIVE
+# تعويض وقائي ذكي لباقة LIVE في حال عطل الشبكة المؤقت
 if not live_content.strip() and prev_live.strip():
     print("🛡️ فشل جلب باقة LIVE، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     live_content = prev_live
@@ -411,9 +431,9 @@ except Exception as e:
     yalla_api_failed = True
 
 # تفعيل الحماية والاحتفاظ الوقائي الذكي من الانهيار للـ Gist
-if yalla_api_failed and prev_yacine.strip(): # استخدام prev_yacine كاسم مرجعي لاسترداد آخر حالة مسجلة للقسم الثالث
+if yalla_api_failed and prev_yalla.strip(): # استخدام prev_yalla كاسم مرجعي لاسترداد آخر حالة مسجلة للقسم الثالث
     print("🛡️ فشل جلب باقة Yalla Live بسبب عطل بالشبكة، تم استرداد الحالة السابقة من الـ Gist لحمايتها.")
-    yalla_content = prev_yacine
+    yalla_content = prev_yalla
 
 
 # 5. دمج المحتوى بالترتيب مع قنواتك اليدوية وحفظ وتحديث الـ Gist الخاص بك
