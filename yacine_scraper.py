@@ -35,7 +35,7 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# دالة ذكية ومطورة كلياً لجلب قنوات ماجد سبورت بالصوت والصورة وبمسميات المباريات الجارية
+# دالة ذكية ومطورة كلياً لجلب قنوات ماجد سبورت بالصوت والصورة وبمسميات المباريات الجارية مع مانع التجميد الذكي
 def get_majed_sport_channels(session):
     timestamp = int(time.time() * 1000)
     config_url = f"https://www.majed-koora.live/config.json?v={timestamp}"
@@ -78,7 +78,13 @@ def get_majed_sport_channels(session):
                     # تنظيف الروابط من التشفيرات المائلة الصادرة من الـ API
                     stream_url = stream_url.replace("\\/", "/").strip()
                     
-                    final_url_with_headers = f"{stream_url}|User-Agent={vlc_ua}"
+                    # إرفاق قيمة التوقيت المتغير (Timestamp) برمجياً لمنع تخزين الـ Cache وتجميد البث المباشر
+                    if "?" in stream_url:
+                        stream_url_with_time = f"{stream_url}&v={timestamp}"
+                    else:
+                        stream_url_with_time = f"{stream_url}?v={timestamp}"
+                    
+                    final_url_with_headers = f"{stream_url_with_time}|User-Agent={vlc_ua}"
                     full_display_name = f"{display_name}{match_info}"
                     
                     entry = (
@@ -236,7 +242,7 @@ prev_yalla = extract_section_by_headers(current_content, headers_list[2], header
 session = create_session()
 final_m3u_content = ""
 
-# 2. كشف وتجهيز باقة قنوات LIVE المباشرة بتصميمها وسيرفراتها الجديدة كلياً بالصوت والصورة
+# 2. كشف وتجهيز باقة قنوات LIVE المباشرة بتصميمها وسيرفراتها الجديدة كلياً بالصوت والصورة ومضاد التجميد
 print("\n⚽ جاري كشف وتجهيز مجموعة قنوات LIVE المباشرة...")
 live_separator = "# ==================== مجموعة قنوات LIVE ===================="
 
