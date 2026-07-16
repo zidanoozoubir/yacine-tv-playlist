@@ -133,7 +133,9 @@ def make_yacine_request(session, path):
 def get_yacine_tv_channels(session):
     yacine_lines = []
     seen_yacine_urls = set()
-    yacine_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+    
+    # يوزر إيجنت نقي وخالٍ تماماً من المسافات لحل مشكلة تشتت الباقات على أجهزة الريسيفر
+    yacine_ua = "okhttp/4.12.0"
     
     print("   📡 جاري جلب الأقسام الرئيسية لـ Yacine TV...")
     categories_data = make_yacine_request(session, "/api/categories")
@@ -192,27 +194,28 @@ def get_yacine_tv_channels(session):
                             if stream_name and stream_name.lower() != ch_name.lower() and stream_name.lower() not in ch_name.lower():
                                 display_name = f"{ch_name} - {stream_name}"
                             
-                            # ⚙️ التعديل الجوهري لحل تشتت المجموعات في الريسيفر: 
-                            # إلحاق اليوزر إيجنت بالرابط مباشرة عبر | لتجنب استخدام أسطر فواصل تشوش قارئ الريسيفر
+                            # صياغة تدعم خيار EXTVLCOPT النقي وبدون مسافات ليعمل البث بثبات وتجتمع القنوات في باقة واحدة
                             entry = (
                                 f'#EXTINF:-1 tvg-logo="{logo}" group-title="YACINE TV", {display_name}\n'
-                                f'{s_url}|User-Agent={yacine_ua}\n'
+                                f'#EXTVLCOPT:http-user-agent={yacine_ua}\n'
+                                f'{s_url}\n'
                             )
                             yacine_lines.append(entry)
                             print(f"      ✔️ تم إضافة قناة من ياسين تيفي: {display_name}")
                             
     return "".join(yacine_lines)
 
-# دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن لحمايتها
+# دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن لحمايتها ومنع تسرب القنوات المؤقتة
 def extract_static_channels(m3u_content):
     lines = m3u_content.splitlines()
     static_lines = []
     current_channel_block = []
     
+    # إضافة الاستثناءات اللازمة لحذف أي قنوات قديمة لياسين تيفي تسربت بالخطأ للقسم اليدوي وتطهير الـ Gist تلقائياً
     exclude_keywords = [
         "api.apipremiumcdn.xyz", "yyyylive", "YALLA LIVE",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "modyleech.workers.dev",
-        "ycn-redirect", "cinemesh.online", "yacinelive", "YACINE TV"
+        "ycn-redirect", "cinemesh.online", "yacinelive", "YACINE TV", "مجموعة ياسين تيفي"
     ]
 
     for line in lines:
@@ -280,8 +283,8 @@ def matches_kids(channel_name):
     return None
 
 
-# 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية وحفظها احتياطياً
-print("📂 جاري جلب محتوى الـ Gist الحالي للنسخ الاحتياطي وحفظ القنوات...")
+# 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية وحفظها احتياطياً وتطهيرها من المكررات
+print("📂 جاري جلب محتوى الـ Gist الحالي للنسخ الاحتياطي وتطهير وتصفية القنوات المكررة...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
 gist_headers = {
     "Authorization": f"token {GITHUB_TOKEN}",
@@ -300,7 +303,7 @@ try:
         current_content = gist_data['files'][filename]['content']
         
         static_clean = extract_static_channels(current_content)
-        print("✔️ تم تحديد وحفظ القنوات اليدوية والثابتة بنجاح.")
+        print("✔️ تم تنظيف الـ Gist وتحديد وحفظ القنوات اليدوية والثابتة بنجاح.")
     else:
         print(f"❌ فشل جلب الـ Gist الحالي. كود الحالة: {gist_response.status_code}")
         exit(1)
