@@ -133,6 +133,7 @@ def make_yacine_request(session, path):
 def get_yacine_tv_channels(session):
     yacine_lines = []
     seen_yacine_urls = set()
+    yacine_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
     
     print("   📡 جاري جلب الأقسام الرئيسية لـ Yacine TV...")
     categories_data = make_yacine_request(session, "/api/categories")
@@ -158,28 +159,48 @@ def get_yacine_tv_channels(session):
             
             # فلترة ذكية لضمان جلب قنوات بيين سبورت وبيين ماكس فقط بجميع جوداتها
             if "bein" in ch_name_lower:
-                stream_url = ch.get("url", "").strip()
-                if not stream_url:
-                    ch_detail = make_yacine_request(session, f"/api/channel/{ch_id}")
-                    if ch_detail:
-                        detail_data = ch_detail if isinstance(ch_detail, dict) else {}
-                        stream_url = detail_data.get("url", "").strip() or detail_data.get("data", {}).get("url", "").strip()
+                logo = ch.get("image", "").strip() or ch.get("logo", "").strip()
                 
-                if stream_url and stream_url not in seen_yacine_urls:
-                    stream_url = stream_url.replace("live///", "live/").strip()
-                    seen_yacine_urls.add(stream_url)
+                # جلب تفاصيل القناة التي تحتوي على روابط الجودات المتعددة
+                ch_detail = make_yacine_request(session, f"/api/channel/{ch_id}")
+                if ch_detail:
+                    ch_list = []
+                    # التحقق من بنية البيانات لفك مصفوفة الجودات بأمان وتفادي الـ AttributeError
+                    if isinstance(ch_detail, list):
+                        ch_list = ch_detail
+                    elif isinstance(ch_detail, dict):
+                        if "data" in ch_detail and isinstance(ch_detail["data"], list):
+                            ch_list = ch_detail["data"]
+                        elif "channels" in ch_detail and isinstance(ch_detail["channels"], list):
+                            ch_list = ch_detail["channels"]
+                        else:
+                            ch_list = [ch_detail]
                     
-                    logo = ch.get("image", "").strip() or ch.get("logo", "").strip()
-                    yacine_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
-                    
-                    entry = (
-                        f'#EXTINF:-1 tvg-logo="{logo}" group-title="مجموعة ياسين تيفي", {ch_name}\n'
-                        f'#EXTVLCOPT:http-user-agent={yacine_ua}\n'
-                        f'{stream_url}\n'
-                    )
-                    yacine_lines.append(entry)
-                    print(f"      ✔️ تم إضافة قناة من ياسين تيفي: {ch_name}")
-                    
+                    # الدوران على جميع جودات القناة المتاحة وإضافتها بالاسم المنسق واليوزر إيجنت الفعال
+                    for stream_item in ch_list:
+                        if not isinstance(stream_item, dict):
+                            continue
+                        
+                        s_url = stream_item.get("url", "").strip() or stream_item.get("data", {}).get("url", "").strip()
+                        if s_url and s_url not in seen_yacine_urls:
+                            s_url = s_url.replace("live///", "live/").strip()
+                            seen_yacine_urls.add(s_url)
+                            
+                            stream_name = stream_item.get("name", "").strip()
+                            display_name = ch_name
+                            
+                            # دمج جودة البث بالاسم لتبدو واضحة (مثال: beIN Sports 1 - FHD)
+                            if stream_name and stream_name.lower() != ch_name.lower() and stream_name.lower() not in ch_name.lower():
+                                display_name = f"{ch_name} - {stream_name}"
+                            
+                            entry = (
+                                f'#EXTINF:-1 tvg-logo="{logo}" group-title="مجموعة ياسين تيفي", {display_name}\n'
+                                f'#EXTVLCOPT:http-user-agent={yacine_ua}\n'
+                                f'{s_url}\n'
+                            )
+                            yacine_lines.append(entry)
+                            print(f"      ✔️ تم إضافة قناة من ياسين تيفي: {display_name}")
+                            
     return "".join(yacine_lines)
 
 # دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن لحمايتها
@@ -448,7 +469,7 @@ else:
     print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح.")
 
 
-# 3.5 جلب وتصفية باقة قنوات ياسين تيفي (Yacine TV) - بيين سبورتس وبيين ماكس فقط
+# 3.5 جلب وتصفية باقة قنوات ياسين تيفي (Yacine TV) - بيين سبورتس وبيين ماكس فقط بكل الجودات
 print("\n🚀 جاري جلب قنوات مجموعة ياسين تيفي (Yacine TV)...")
 yacine_separator = "# ==================== مجموعة ياسين تيفي ===================="
 
