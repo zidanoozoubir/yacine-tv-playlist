@@ -35,7 +35,7 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# دالة ذكية لجلب قنوات ماجد سبورت متوافقة مع VLC والريسيفرات بدون تجميد
+# دالة جلب قنوات ماجد سبورت
 def get_majed_sport_channels(session):
     timestamp = int(time.time() * 1000)
     config_url = f"https://www.majed-koora.live/config.json?v={timestamp}"
@@ -49,7 +49,6 @@ def get_majed_sport_channels(session):
         if response.status_code == 200:
             data = response.json()
             
-            # مفاتيح جودات البث والسيرفرات الاحتياطية في التصميم الجديد للـ JSON
             stream_keys = {
                 "stream_high": "Majed Sport FHD",
                 "stream_medium": "Majed Sport HD",
@@ -58,7 +57,6 @@ def get_majed_sport_channels(session):
                 "stream_reserve2": "Majed Sport Reserve 2"
             }
             
-            # قراءة معلومات المباراة الجارية لدمجها تلقائياً مع مسمى القنوات
             match_info = ""
             matches = data.get("matches", [])
             if matches:
@@ -69,16 +67,13 @@ def get_majed_sport_channels(session):
                 if team1 and team2:
                     match_info = f" - {team1} VS {team2} ({comp})"
             
-            # الترويسة الأمنية الفعالة والمثبتة لتشغيل بث ماجد سبورت
             vlc_ua = "VLC/3.0.16 LibVLC/3.0.16"
             
             for key, display_name in stream_keys.items():
                 stream_url = data.get(key, "").strip()
                 if stream_url:
-                    # تنظيف الروابط من التشفيرات المائلة الصادرة من الـ API
                     stream_url = stream_url.replace("\\/", "/").strip()
                     
-                    # إرفاق قيمة التوقيت المتغير (Timestamp) برمجياً لمنع تخزين الـ Cache وتجميد البث المباشر
                     if "?" in stream_url:
                         stream_url_with_time = f"{stream_url}&v={timestamp}"
                     else:
@@ -86,7 +81,6 @@ def get_majed_sport_channels(session):
                     
                     full_display_name = f"{display_name}{match_info}"
                     
-                    # صياغة قياسية خالية من الرمز | لضمان عملها على VLC
                     entry = (
                         f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {full_display_name}\n'
                         f'#EXTVLCOPT:http-user-agent={vlc_ua}\n'
@@ -96,7 +90,7 @@ def get_majed_sport_channels(session):
                     print(f"      ⚽ تم جلب وتأكيد قناة ماجد سبورت: {full_display_name}")
                     
     except Exception as e:
-        print(f"⚠️ فشل جلب باقة ماجد سبورت بتصميمها الجديد بسبب: {e}")
+        print(f"⚠️ فشل جلب باقة ماجد سبورت بسبب: {e}")
     return "".join(majed_lines)
 
 # دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
@@ -240,7 +234,6 @@ basha_headers = {
     "User-Agent": "okhttp/3.9.1"
 }
 
-# نعتمد طلب قائمة القنوات الشامل مباشرة
 basha_payloads = ["method=o6&event=view"]
 basha_content = ""
 
@@ -277,17 +270,15 @@ for payload in basha_payloads:
                 if any(tag in channel_name_lower for tag in exclude_tags):
                     continue
                 
-                # استخراج الترويسات الأمنية الديناميكية المخصصة لكل قناة من الـ API مباشرة
+                # استخراج الترويسات الأمنية من الـ API
                 basha_ua = channel.get('user_agent', '').strip()
-                if not basha_ua:
-                    basha_ua = "okhttp/3.9.1"
-                
                 referer = channel.get('refrens', '').strip()
                 cookie = channel.get('cookie', '').strip()
                 
-                # بناء خيارات المشغلات الخارجية مثل VLC القياسية بدون الرمز |
-                vlc_opts = [f'#EXTVLCOPT:http-user-agent={basha_ua}']
-                
+                # بناء خيارات المشغل الخارجي لـ VLC ومطابقة ترويسة الهاتف (Icy-MetaData)
+                vlc_opts = ["#EXTVLCOPT:http-header=Icy-MetaData: 1"]
+                if basha_ua:
+                    vlc_opts.append(f'#EXTVLCOPT:http-user-agent={basha_ua}')
                 if referer:
                     vlc_opts.append(f'#EXTVLCOPT:http-referrer={referer}')
                 if cookie:
@@ -295,19 +286,18 @@ for payload in basha_payloads:
                 
                 vlc_opts_str = "\n".join(vlc_opts)
                 
-                # نعتمد هنا الرابط النقي المباشر بدون الرمز | لضمان تشغيله على VLC بكفاءة
-                final_basha_url = raw_url
+                # ⚙️ التعديل الجوهري: تنظيف مسار الرابط واستبدال live/// بـ live/ لتطابق البث الفعلي تماماً كما في الهاتف
+                final_basha_url = raw_url.replace("live///", "live/").strip()
                 logo = channel.get('logo', '').strip()
                 group_title = "AL BASHA TV"
 
                 # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلوبة أولاً
                 kids_match = matches_kids(channel_name)
                 if kids_match:
-                    entry = (
-                        f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
-                        f'{vlc_opts_str}\n'
-                        f'{final_basha_url}\n'
-                    )
+                    entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
+                    entry += f'{vlc_opts_str}\n'
+                    entry += f'{final_basha_url}\n'
+                    
                     kids_channels_list.append(entry)
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
@@ -345,11 +335,10 @@ for payload in basha_payloads:
                         is_french_target = True
                 
                 if is_bein or is_arabic_premium or is_french_target:
-                    entry = (
-                        f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
-                        f'{vlc_opts_str}\n'
-                        f'{final_basha_url}\n'
-                    )
+                    entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
+                    entry += f'{vlc_opts_str}\n'
+                    entry += f'{final_basha_url}\n'
+                    
                     regular_channels_list.append(entry)
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
@@ -388,7 +377,6 @@ try:
         match_list = yalla_data.get("List", [])
         
         for match in match_list:
-            # التحقق من أن المباراة جارية حالياً وليست منتهية
             if match.get("live") and match.get("started") and not match.get("finished"):
                 server_val = str(match.get("server", "s")).lower().strip()
                 channel_name = match.get("sound", "beIN Max")
@@ -396,14 +384,10 @@ try:
                 team2 = match.get("name2", "Team 2")
                 league = match.get("ligue", "Live Match")
                 
-                # استخراج رقم السيرفر لتركيب نطاق Azure المباشر المقابل له
                 num_match = re.findall(r'\d+', server_val)
                 server_num = num_match[0] if num_match else "1"
                 
-                # تركيب ملف البث الرئيسي المشترك index.fmp4.m3u8 لدمج الصوت مع الصورة تلقائياً ليعملا معاً بثبات
                 stream_url = f"https://yyyylive{server_num}.blob.core.windows.net/live/stream/index.fmp4.m3u8"
-                
-                # صياغة مسمى مميز وواضح لوالدك يسهل عليه اختيار المباراة
                 display_name = f"{channel_name} - {team1} VS {team2} ({league})"
                 
                 entry = (
@@ -423,7 +407,6 @@ except Exception as e:
     print(f"⚠️ فشل الاتصال بسيرفر Yalla Live بسبب: {e}")
     yalla_api_failed = True
 
-# تفعيل الحماية والاحتفاظ الوقائي الذكي من الانهيار للـ Gist
 if yalla_api_failed and prev_yalla.strip():
     print("🛡️ فشل جلب باقة Yalla Live بسبب عطل بالشبكة، تم استرداد الحالة السابقة من الـ Gist لحمايتها.")
     yalla_content = prev_yalla
