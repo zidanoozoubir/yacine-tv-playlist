@@ -35,7 +35,7 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# دالة ذكية لجلب قنوات ماجد سبورت بالصوت والصورة وبمسميات المباريات الجارية مع مانع التجميد
+# دالة ذكية لجلب قنوات ماجد سبورت متوافقة مع VLC والريسيفرات بدون تجميد
 def get_majed_sport_channels(session):
     timestamp = int(time.time() * 1000)
     config_url = f"https://www.majed-koora.live/config.json?v={timestamp}"
@@ -69,7 +69,7 @@ def get_majed_sport_channels(session):
                 if team1 and team2:
                     match_info = f" - {team1} VS {team2} ({comp})"
             
-            # الترويسة الأمنية الفعالة والمثبتة لتشغيل بث ماجد سبورت في الريسيفرات و VLC
+            # الترويسة الأمنية الفعالة والمثبتة لتشغيل بث ماجد سبورت
             vlc_ua = "VLC/3.0.16 LibVLC/3.0.16"
             
             for key, display_name in stream_keys.items():
@@ -84,13 +84,13 @@ def get_majed_sport_channels(session):
                     else:
                         stream_url_with_time = f"{stream_url}?v={timestamp}"
                     
-                    final_url_with_headers = f"{stream_url_with_time}|User-Agent={vlc_ua}"
                     full_display_name = f"{display_name}{match_info}"
                     
+                    # صياغة قياسية خالية من الرمز | لضمان عملها على VLC
                     entry = (
                         f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {full_display_name}\n'
                         f'#EXTVLCOPT:http-user-agent={vlc_ua}\n'
-                        f'{final_url_with_headers}\n'
+                        f'{stream_url_with_time}\n'
                     )
                     majed_lines.append(entry)
                     print(f"      ⚽ تم جلب وتأكيد قناة ماجد سبورت: {full_display_name}")
@@ -138,30 +138,6 @@ def extract_static_channels(m3u_content):
             static_lines.extend(current_channel_block)
             
     return "\n".join(static_lines).strip()
-
-# دالة لفحص حالة بروكسي الباشا وكشف صفحات التحدي والحظر
-def check_basha_proxy_status(session):
-    test_url = "http://live-albashatv.site/stream"
-    try:
-        response = session.get(test_url, timeout=3, allow_redirects=False)
-        response_text_lower = response.text.lower()
-        
-        is_cloudflare_challenge = (
-            "cf-challenge" in response_text_lower or 
-            "challenges.cloudflare.com" in response_text_lower or 
-            "just a moment" in response_text_lower or
-            "turnstile" in response_text_lower
-        )
-        
-        if response.status_code in [200, 400] and not is_cloudflare_challenge:
-            print(f"⚡ تم فحص البروكسي: نشط ومتاح.")
-            return True
-        else:
-            print(f"⚠️ تم فحص البروكسي: غير متاح أو محجوب بـ Cloudflare.")
-            return False
-    except Exception as e:
-        print(f"⚠️ تم فحص البروكسي: فشل الاتصال ({e}).")
-        return False
 
 # دالة ذكية لاستخراج الأقسام الحالية من الـ Gist لحمايتها في حال حدوث فشل مؤقت للـ API
 def extract_section_by_headers(content, current_header, next_headers):
@@ -242,7 +218,7 @@ prev_yalla = extract_section_by_headers(current_content, headers_list[2], header
 session = create_session()
 final_m3u_content = ""
 
-# 2. كشف وتجهيز باقة قنوات LIVE المباشرة بتصميمها وسيرفراتها الجديدة كلياً بالصوت والصورة ومضاد التجميد
+# 2. كشف وتجهيز باقة قنوات LIVE المباشرة
 print("\n⚽ جاري كشف وتجهيز مجموعة قنوات LIVE المباشرة...")
 live_separator = "# ==================== مجموعة قنوات LIVE ===================="
 
@@ -254,7 +230,7 @@ if not live_content.strip() and prev_live.strip():
     live_content = prev_live
 
 
-# 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV)
+# 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV) وتنقيتها لـ VLC والريسيفرات
 print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
 basha_separator = "# ==================== مجموعة قنوات AL BASHA TV ===================="
 basha_api_url = "https://albashatv.site/api.php"
@@ -264,7 +240,7 @@ basha_headers = {
     "User-Agent": "okhttp/3.9.1"
 }
 
-# نعتمد طلب قائمة القنوات الشامل مباشرة لتجنب استهلاك الموارد وجلب تصنيفات فارغة
+# نعتمد طلب قائمة القنوات الشامل مباشرة
 basha_payloads = ["method=o6&event=view"]
 basha_content = ""
 
@@ -301,28 +277,26 @@ for payload in basha_payloads:
                 if any(tag in channel_name_lower for tag in exclude_tags):
                     continue
                 
-                # استخراج الترويسات الأمنية الديناميكية المخصصة لكل قناة من الـ API مباشرة لتجاوز الحظر
+                # استخراج الترويسات الأمنية الديناميكية المخصصة لكل قناة من الـ API مباشرة
                 basha_ua = channel.get('user_agent', '').strip()
                 if not basha_ua:
-                    basha_ua = "okhttp/3.9.1" # يوزر إيجنت افتراضي في حال عدم وجود قيمة مخصصة
+                    basha_ua = "okhttp/3.9.1"
                 
                 referer = channel.get('refrens', '').strip()
                 cookie = channel.get('cookie', '').strip()
                 
-                # بناء خيارات المشغلات الخارجية مثل VLC وصياغة رابط البث بالبارامترات اللازمة
+                # بناء خيارات المشغلات الخارجية مثل VLC القياسية بدون الرمز |
                 vlc_opts = [f'#EXTVLCOPT:http-user-agent={basha_ua}']
-                url_params = [f'User-Agent={basha_ua}']
                 
                 if referer:
                     vlc_opts.append(f'#EXTVLCOPT:http-referrer={referer}')
-                    url_params.append(f'Referer={urllib.parse.quote(referer)}')
                 if cookie:
                     vlc_opts.append(f'#EXTVLCOPT:http-cookie={cookie}')
-                    url_params.append(f'Cookie={urllib.parse.quote(cookie)}')
                 
                 vlc_opts_str = "\n".join(vlc_opts)
-                suffix = "|" + "&".join(url_params)
-                final_basha_url = f"{raw_url}{suffix}"
+                
+                # نعتمد هنا الرابط النقي المباشر بدون الرمز | لضمان تشغيله على VLC بكفاءة
+                final_basha_url = raw_url
                 logo = channel.get('logo', '').strip()
                 group_title = "AL BASHA TV"
 
@@ -337,7 +311,7 @@ for payload in basha_payloads:
                     kids_channels_list.append(entry)
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
-                    continue # الانتقال للقناة التالية لعدم تكرارها
+                    continue
                 
                 # تصفية القنوات العادية والـ Premium الأخرى
                 is_bein = "bein" in channel_name_lower
@@ -450,7 +424,7 @@ except Exception as e:
     yalla_api_failed = True
 
 # تفعيل الحماية والاحتفاظ الوقائي الذكي من الانهيار للـ Gist
-if yalla_api_failed and prev_yalla.strip(): # استخدام prev_yalla كاسم مرجعي لاسترداد آخر حالة مسجلة للقسم الثالث
+if yalla_api_failed and prev_yalla.strip():
     print("🛡️ فشل جلب باقة Yalla Live بسبب عطل بالشبكة، تم استرداد الحالة السابقة من الـ Gist لحمايتها.")
     yalla_content = prev_yalla
 
