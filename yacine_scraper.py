@@ -35,7 +35,7 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
-# دالة ذكية ومطورة كلياً لجلب قنوات ماجد سبورت بالصوت والصورة وبمسميات المباريات الجارية مع مانع التجميد الذكي
+# دالة ذكية لجلب قنوات ماجد سبورت بالصوت والصورة وبمسميات المباريات الجارية مع مانع التجميد
 def get_majed_sport_channels(session):
     timestamp = int(time.time() * 1000)
     config_url = f"https://www.majed-koora.live/config.json?v={timestamp}"
@@ -264,8 +264,8 @@ basha_headers = {
     "User-Agent": "okhttp/3.9.1"
 }
 
-use_basha_proxy = check_basha_proxy_status(session)
-basha_payloads = ["method=o6&event=view", "method=o2&event=view"]
+# نعتمد طلب قائمة القنوات الشامل مباشرة لتجنب استهلاك الموارد وجلب تصنيفات فارغة
+basha_payloads = ["method=o6&event=view"]
 basha_content = ""
 
 # فصل قنوات الأطفال لتظهر في المقدمة دائماً
@@ -301,26 +301,45 @@ for payload in basha_payloads:
                 if any(tag in channel_name_lower for tag in exclude_tags):
                     continue
                 
+                # استخراج الترويسات الأمنية الديناميكية المخصصة لكل قناة من الـ API مباشرة لتجاوز الحظر
+                basha_ua = channel.get('user_agent', '').strip()
+                if not basha_ua:
+                    basha_ua = "okhttp/3.9.1" # يوزر إيجنت افتراضي في حال عدم وجود قيمة مخصصة
+                
+                referer = channel.get('refrens', '').strip()
+                cookie = channel.get('cookie', '').strip()
+                
+                # بناء خيارات المشغلات الخارجية مثل VLC وصياغة رابط البث بالبارامترات اللازمة
+                vlc_opts = [f'#EXTVLCOPT:http-user-agent={basha_ua}']
+                url_params = [f'User-Agent={basha_ua}']
+                
+                if referer:
+                    vlc_opts.append(f'#EXTVLCOPT:http-referrer={referer}')
+                    url_params.append(f'Referer={urllib.parse.quote(referer)}')
+                if cookie:
+                    vlc_opts.append(f'#EXTVLCOPT:http-cookie={cookie}')
+                    url_params.append(f'Cookie={urllib.parse.quote(cookie)}')
+                
+                vlc_opts_str = "\n".join(vlc_opts)
+                suffix = "|" + "&".join(url_params)
+                final_basha_url = f"{raw_url}{suffix}"
+                logo = channel.get('logo', '').strip()
+                group_title = "AL BASHA TV"
+
                 # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلوبة أولاً
                 kids_match = matches_kids(channel_name)
                 if kids_match:
-                    if use_basha_proxy:
-                        final_basha_url = f"http://live-albashatv.site/stream?url={raw_url}"
-                        entry = f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n{final_basha_url}\n'
-                    else:
-                        basha_ua = "okhttp/3.9.1"
-                        final_basha_url = f"{raw_url}|User-Agent={basha_ua}"
-                        entry = (
-                            f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
-                            f'#EXTVLCOPT:http-user-agent={basha_ua}\n'
-                            f'{final_basha_url}\n'
-                        )
+                    entry = (
+                        f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
+                        f'{vlc_opts_str}\n'
+                        f'{final_basha_url}\n'
+                    )
                     kids_channels_list.append(entry)
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
-                    continue # الانتقال للقناة التالية فور مطابقة باقة الأطفال لعدم تكرارها
+                    continue # الانتقال للقناة التالية لعدم تكرارها
                 
-                # وإلا نتابع تصفية القنوات العادية والـ Premium الأخرى
+                # تصفية القنوات العادية والـ Premium الأخرى
                 is_bein = "bein" in channel_name_lower
                 
                 is_arabic_premium = False
@@ -352,17 +371,11 @@ for payload in basha_payloads:
                         is_french_target = True
                 
                 if is_bein or is_arabic_premium or is_french_target:
-                    if use_basha_proxy:
-                        final_basha_url = f"http://live-albashatv.site/stream?url={raw_url}"
-                        entry = f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n{final_basha_url}\n'
-                    else:
-                        basha_ua = "okhttp/3.9.1"
-                        final_basha_url = f"{raw_url}|User-Agent={basha_ua}"
-                        entry = (
-                            f'#EXTINF:-1 tvg-logo="" group-title="AL BASHA TV", {channel_name}\n'
-                            f'#EXTVLCOPT:http-user-agent={basha_ua}\n'
-                            f'{final_basha_url}\n'
-                        )
+                    entry = (
+                        f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
+                        f'{vlc_opts_str}\n'
+                        f'{final_basha_url}\n'
+                    )
                     regular_channels_list.append(entry)
                     seen_basha_urls.add(raw_url)
                     matched_count += 1
