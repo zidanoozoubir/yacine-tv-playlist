@@ -144,7 +144,6 @@ def get_yacine_tv_channels(session):
     
     for cat in categories:
         cat_id = cat.get("id")
-        cat_name = cat.get("name", "Yacine TV")
         
         channels_data = make_yacine_request(session, f"/api/categories/{cat_id}/channels")
         if not channels_data:
@@ -176,7 +175,7 @@ def get_yacine_tv_channels(session):
                         else:
                             ch_list = [ch_detail]
                     
-                    # الدوران على جميع جودات القناة المتاحة وإضافتها بالاسم المنسق واليوزر إيجنت الفعال
+                    # الدوران على جميع جودات القناة المتاحة وإضافتها بالاسم المنسق
                     for stream_item in ch_list:
                         if not isinstance(stream_item, dict):
                             continue
@@ -193,10 +192,11 @@ def get_yacine_tv_channels(session):
                             if stream_name and stream_name.lower() != ch_name.lower() and stream_name.lower() not in ch_name.lower():
                                 display_name = f"{ch_name} - {stream_name}"
                             
+                            # ⚙️ التعديل الجوهري لحل تشتت المجموعات في الريسيفر: 
+                            # إلحاق اليوزر إيجنت بالرابط مباشرة عبر | لتجنب استخدام أسطر فواصل تشوش قارئ الريسيفر
                             entry = (
-                                f'#EXTINF:-1 tvg-logo="{logo}" group-title="مجموعة ياسين تيفي", {display_name}\n'
-                                f'#EXTVLCOPT:http-user-agent={yacine_ua}\n'
-                                f'{s_url}\n'
+                                f'#EXTINF:-1 tvg-logo="{logo}" group-title="YACINE TV", {display_name}\n'
+                                f'{s_url}|User-Agent={yacine_ua}\n'
                             )
                             yacine_lines.append(entry)
                             print(f"      ✔️ تم إضافة قناة من ياسين تيفي: {display_name}")
@@ -212,7 +212,7 @@ def extract_static_channels(m3u_content):
     exclude_keywords = [
         "api.apipremiumcdn.xyz", "yyyylive", "YALLA LIVE",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "modyleech.workers.dev",
-        "ycn-redirect", "cinemesh.online", "yacinelive", "مجموعة ياسين تيفي"
+        "ycn-redirect", "cinemesh.online", "yacinelive", "YACINE TV"
     ]
 
     for line in lines:
