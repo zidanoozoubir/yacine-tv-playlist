@@ -93,7 +93,114 @@ def get_majed_sport_channels(session):
         print(f"⚠️ فشل جلب باقة ماجد سبورت بسبب: {e}")
     return "".join(majed_lines)
 
-# دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
+# دالة فك التشفير التلقائية المعتمدة على معطيات ياسين تيفي
+def decrypt_yacine_data(enc_data, key):
+    try:
+        dec_bytes = base64.b64decode(enc_data.encode("ascii"))
+        result = bytearray()
+        for i in range(len(dec_bytes)):
+            result.append(dec_bytes[i] ^ ord(key[i % len(key)]))
+        return result.decode("utf-8", errors="ignore")
+    except Exception:
+        return ""
+
+# دالة الاتصال بالـ API وفك تشفيره ديناميكياً لياسين تيفي
+def make_yacine_request(session, path):
+    api_url = "https://def.yacinelive.com"
+    base_key = "c!xZj+N9&G@Ev@vw"
+    
+    headers = {
+        "User-Agent": "okhttp/4.12.0",
+        "Accept": "application/json"
+    }
+    
+    try:
+        response = session.get(api_url + path, headers=headers, timeout=12)
+        if response.status_code == 200:
+            timestamp = str(int(time.time()))
+            if "T" in response.headers:
+                timestamp = response.headers["T"]
+            elif "t" in response.headers:
+                timestamp = response.headers["t"]
+            
+            decrypted_json = decrypt_yacine_data(response.text, base_key + timestamp)
+            return json.loads(decrypted_json)
+    except Exception as e:
+        print(f"⚠️ فشل الاتصال بـ API ياسين للمسار {path}: {e}")
+    return None
+
+# دالة جلب وتصفية قنوات بيين سبورتس وبيين ماكس فقط بكل جوداتها من ياسين تيفي
+def get_yacine_tv_channels(session):
+    yacine_lines = []
+    seen_yacine_urls = set()
+    yacine_ua = "okhttp/4.12.0"
+    
+    print("   📡 جاري جلب الأقسام الرئيسية لـ Yacine TV...")
+    categories_data = make_yacine_request(session, "/api/categories")
+    if not categories_data:
+        return ""
+    
+    categories = categories_data if isinstance(categories_data, list) else categories_data.get("data", [])
+    
+    for cat in categories:
+        cat_id = cat.get("id")
+        
+        channels_data = make_yacine_request(session, f"/api/categories/{cat_id}/channels")
+        if not channels_data:
+            continue
+            
+        channels = channels_data if isinstance(channels_data, list) else channels_data.get("data", [])
+        
+        for ch in channels:
+            ch_id = ch.get("id")
+            ch_name = ch.get("name", "Channel").strip()
+            ch_name_lower = ch_name.lower()
+            
+            # فلترة ذكية لضمان جلب قنوات بيين سبورت وبيين ماكس فقط بجميع جوداتها
+            if "bein" in ch_name_lower:
+                logo = ch.get("image", "").strip() or ch.get("logo", "").strip()
+                
+                # جلب تفاصيل القناة التي تحتوي على روابط الجودات المتعددة
+                ch_detail = make_yacine_request(session, f"/api/channel/{ch_id}")
+                if ch_detail:
+                    ch_list = []
+                    if isinstance(ch_detail, list):
+                        ch_list = ch_detail
+                    elif isinstance(ch_detail, dict):
+                        if "data" in ch_detail and isinstance(ch_detail["data"], list):
+                            ch_list = ch_detail["data"]
+                        elif "channels" in ch_detail and isinstance(ch_detail["channels"], list):
+                            ch_list = ch_detail["channels"]
+                        else:
+                            ch_list = [ch_detail]
+                    
+                    # الدوران على جميع جودات القناة المتاحة وإضافتها بالاسم المنسق
+                    for stream_item in ch_list:
+                        if not isinstance(stream_item, dict):
+                            continue
+                        
+                        s_url = stream_item.get("url", "").strip() or stream_item.get("data", {}).get("url", "").strip()
+                        if s_url and s_url not in seen_yacine_urls:
+                            s_url = s_url.replace("live///", "live/").strip()
+                            seen_yacine_urls.add(s_url)
+                            
+                            stream_name = stream_item.get("name", "").strip()
+                            display_name = ch_name
+                            
+                            if stream_name and stream_name.lower() != ch_name.lower() and stream_name.lower() not in ch_name.lower():
+                                display_name = f"{ch_name} - {stream_name}"
+                            
+                            entry = (
+                                f'#EXTINF:-1 tvg-logo="{logo}" group-title="YACINE TV", {display_name}\n'
+                                f'#EXTVLCOPT:http-user-agent={yacine_ua}\n'
+                                f'{s_url}\n'
+                            )
+                            yacine_lines.append(entry)
+                            print(f"      ✔️ تم إضافة قناة من ياسين تيفي: {display_name}")
+                            
+    return "".join(yacine_lines)
+
+# دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن لحمايتها ومنع تسرب القنوات المؤقتة
 def extract_static_channels(m3u_content):
     lines = m3u_content.splitlines()
     static_lines = []
@@ -101,7 +208,8 @@ def extract_static_channels(m3u_content):
     
     exclude_keywords = [
         "api.apipremiumcdn.xyz", "yyyylive", "YALLA LIVE",
-        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "modyleech.workers.dev"
+        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "modyleech.workers.dev",
+        "ycn-redirect", "cinemesh.online", "yacinelive", "YACINE TV", "مجموعة ياسين تيفي"
     ]
 
     for line in lines:
@@ -169,8 +277,8 @@ def matches_kids(channel_name):
     return None
 
 
-# 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية وحفظها احتياطياً
-print("📂 جاري جلب محتوى الـ Gist الحالي للنسخ الاحتياطي وحفظ القنوات...")
+# 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية وحفظها احتياطياً وتطهيرها من المكررات
+print("📂 جاري جلب محتوى الـ Gist الحالي للنسخ الاحتياطي وتطهير وتصفية القنوات المكررة...")
 gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
 gist_headers = {
     "Authorization": f"token {GITHUB_TOKEN}",
@@ -189,7 +297,7 @@ try:
         current_content = gist_data['files'][filename]['content']
         
         static_clean = extract_static_channels(current_content)
-        print("✔️ تم تحديد وحفظ القنوات اليدوية والثابتة بنجاح.")
+        print("✔️ تم تنظيف الـ Gist وتحديد وحفظ القنوات اليدوية والثابتة بنجاح.")
     else:
         print(f"❌ فشل جلب الـ Gist الحالي. كود الحالة: {gist_response.status_code}")
         exit(1)
@@ -201,13 +309,15 @@ except Exception as e:
 headers_list = [
     "# ==================== مجموعة قنوات LIVE ====================",
     "# ==================== مجموعة قنوات AL BASHA TV ====================",
+    "# ==================== مجموعة ياسين تيفي ====================",
     "# ==================== قنوات YALLA LIVE (مباريات جارية) ====================",
     "# ==================== قنواتك اليدوية والثابتة ===================="
 ]
 
 prev_live = extract_section_by_headers(current_content, headers_list[0], headers_list[1:])
 prev_basha = extract_section_by_headers(current_content, headers_list[1], headers_list[2:])
-prev_yalla = extract_section_by_headers(current_content, headers_list[2], headers_list[3:])
+prev_yacine = extract_section_by_headers(current_content, headers_list[2], headers_list[3:])
+prev_yalla = extract_section_by_headers(current_content, headers_list[3], headers_list[4:])
 
 session = create_session()
 final_m3u_content = ""
@@ -286,12 +396,13 @@ for payload in basha_payloads:
                 
                 vlc_opts_str = "\n".join(vlc_opts)
                 
-                # ⚙️ التعديل الجوهري: تنظيف مسار الرابط واستبدال live/// بـ live/ لتطابق البث الفعلي تماماً كما في الهاتف
-                final_basha_url = raw_url.replace("live///", "live/").strip()
+                # ⚙️ تعديل تقني حاسم وحيوي لمطابقة السيرفر الجديد (217.60.15.182) بعد التحديث:
+                # نقوم بتهيئة مسار البث ليحتوي على شرطتين مائلتين بالضبط بعد كلمة live لتمرير المصادقة بنجاح كما في الهاتف
+                final_basha_url = re.sub(r'live/+', 'live//', raw_url).strip()
                 logo = channel.get('logo', '').strip()
                 group_title = "AL BASHA TV"
 
-                # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلوبة أولاً
+                # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلومة أولاً
                 kids_match = matches_kids(channel_name)
                 if kids_match:
                     entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
@@ -353,7 +464,19 @@ if not basha_content.strip() and prev_basha.strip():
     print("🛡️ فشل جلب باقة الباشا ديناميكياً، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     basha_content = prev_basha
 else:
-    print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح (بما في ذلك قنوات الأطفال بالمقدمة).")
+    print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح.")
+
+
+# 3.5 جلب وتصفية باقة قنوات ياسين تيفي (Yacine TV) - بيين سبورتس وبيين ماكس فقط بكل الجودات
+print("\n🚀 جاري جلب قنوات مجموعة ياسين تيفي (Yacine TV)...")
+yacine_separator = "# ==================== مجموعة ياسين تيفي ===================="
+
+yacine_content = get_yacine_tv_channels(session)
+
+# تعويض وقائي ذكي لباقة ياسين تيفي في حال عطل الشبكة المؤقت
+if not yacine_content.strip() and prev_yacine.strip():
+    print("🛡️ فشل جلب باقة ياسين تيفي، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
+    yacine_content = prev_yacine
 
 
 # 4. جلب وتنسيق قنوات Yalla Live للمباريات الجارية حالياً بسيرفرات مايكروسوفت المستقرة بالصوت والصورة
@@ -413,7 +536,7 @@ if yalla_api_failed and prev_yalla.strip():
 
 
 # 5. دمج المحتوى بالترتيب مع قنواتك اليدوية وحفظ وتحديث الـ Gist الخاص بك
-final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yalla_separator}\n{yalla_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
+final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n{yalla_separator}\n{yalla_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
 
 print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
 update_data = {
