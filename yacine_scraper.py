@@ -152,8 +152,9 @@ def get_yacine_tv_channels(session):
     yacine_lines = []
     seen_yacine_urls = set()
     
-    # ⚙️ يوزر إيجنت قياسي عالمي خالٍ من المسافات وعلامات التنصيص لتجنب تشتت المجموعات وغير محظور في خوادم ياسين الرياضية
-    yacine_ua = "Mozilla/5.0"
+    # ⚙️ التعديل النهائي والحاسم لقسم ياسين تيفي فقط: استخدام يوزر إيجنت الكروم الكامل والمطابق تماماً لتشغيل الرياضة
+    # مع تأطيره برمجياً بعلامتي تنصيص مزدوجة "" لمنع تشتت الباقات وجمع القنوات كاملة في الريسيفر
+    yacine_ua = '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"'
     
     print("   📡 جاري جلب الأقسام الرئيسية لـ Yacine TV...")
     categories_data = make_yacine_request(session, "/api/categories")
@@ -203,7 +204,7 @@ def get_yacine_tv_channels(session):
                         if s_url and s_url not in seen_yacine_urls:
                             s_url = s_url.replace("live///", "live/").strip()
                             
-                            # تتبع وتحويل الرابط برمجياً نيابة عن الريسيفر للحصول على سيرفر البث المباشر الفعلي
+                            # تتبع وتحويل الرابط برمجياً نيابة عن الريسيفر للحصول على سيرفر البث المباشر الفعلي وتخطي الـ 302
                             resolved_url = resolve_yacine_redirect(session, s_url)
                             
                             if resolved_url not in seen_yacine_urls:
@@ -215,7 +216,6 @@ def get_yacine_tv_channels(session):
                                 if stream_name and stream_name.lower() != ch_name.lower() and stream_name.lower() not in ch_name.lower():
                                     display_name = f"{ch_name} - {stream_name}"
                                 
-                                # الترويسة الفعالة لـ VLC والريسيفر والتي تتخطى الحظر 403 وتحافظ على القنوات مجمعة تماماً
                                 entry = (
                                     f'#EXTINF:-1 tvg-logo="{logo}" group-title="YACINE TV", {display_name}\n'
                                     f'#EXTVLCOPT:http-user-agent={yacine_ua}\n'
@@ -539,7 +539,7 @@ try:
                 display_name = f"{channel_name} - {team1} VS {team2} ({league})"
                 
                 entry = (
-                    f'#EXTINF:-1 tvg-logo="" group-title="YALLA LIVE (مبارية جارية)", {display_name}\n'
+                    f'#EXTINF:-1 tvg-logo="" group-title="YALLA LIVE (مباريات جارية)", {display_name}\n'
                     f'{stream_url}\n'
                 )
                 yalla_lines.append(entry)
