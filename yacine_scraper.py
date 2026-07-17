@@ -152,8 +152,8 @@ def get_yacine_tv_channels(session):
     yacine_lines = []
     seen_yacine_urls = set()
     
-    # يوزر إيجنت قياسي وخالٍ من المسافات وعلامات التنصيص لتجنب تشتت المجموعات على الريسيفر
-    yacine_ua = "AppleCoreMedia/1.0.0.16G77"
+    # ⚙️ يوزر إيجنت قياسي عالمي خالٍ من المسافات وعلامات التنصيص لتجنب تشتت المجموعات وغير محظور في خوادم ياسين الرياضية
+    yacine_ua = "Mozilla/5.0"
     
     print("   📡 جاري جلب الأقسام الرئيسية لـ Yacine TV...")
     categories_data = make_yacine_request(session, "/api/categories")
@@ -194,7 +194,7 @@ def get_yacine_tv_channels(session):
                         else:
                             ch_list = [ch_detail]
                     
-                    # الدوران على جميع جودات القناة المتاحة وإضافتها بالاسم المنسق بعد حل مشكلة التوجيه
+                    # الدوران على جميع جودات القناة المتاحة وإضافتها بالاسم المنسق
                     for stream_item in ch_list:
                         if not isinstance(stream_item, dict):
                             continue
@@ -203,7 +203,7 @@ def get_yacine_tv_channels(session):
                         if s_url and s_url not in seen_yacine_urls:
                             s_url = s_url.replace("live///", "live/").strip()
                             
-                            # 🛠️ حل الريسيفر الحاسم: تتبع وتحويل الرابط برمجياً نيابة عن الريسيفر للحصول على سيرفر البث المباشر الفعلي
+                            # تتبع وتحويل الرابط برمجياً نيابة عن الريسيفر للحصول على سيرفر البث المباشر الفعلي
                             resolved_url = resolve_yacine_redirect(session, s_url)
                             
                             if resolved_url not in seen_yacine_urls:
@@ -215,6 +215,7 @@ def get_yacine_tv_channels(session):
                                 if stream_name and stream_name.lower() != ch_name.lower() and stream_name.lower() not in ch_name.lower():
                                     display_name = f"{ch_name} - {stream_name}"
                                 
+                                # الترويسة الفعالة لـ VLC والريسيفر والتي تتخطى الحظر 403 وتحافظ على القنوات مجمعة تماماً
                                 entry = (
                                     f'#EXTINF:-1 tvg-logo="{logo}" group-title="YACINE TV", {display_name}\n'
                                     f'#EXTVLCOPT:http-user-agent={yacine_ua}\n'
@@ -538,7 +539,7 @@ try:
                 display_name = f"{channel_name} - {team1} VS {team2} ({league})"
                 
                 entry = (
-                    f'#EXTINF:-1 tvg-logo="" group-title="YALLA LIVE (مباريات جارية)", {display_name}\n'
+                    f'#EXTINF:-1 tvg-logo="" group-title="YALLA LIVE (مبارية جارية)", {display_name}\n'
                     f'{stream_url}\n'
                 )
                 yalla_lines.append(entry)
