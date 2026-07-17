@@ -35,6 +35,24 @@ def get_final_url(raw_url):
         pass
     return raw_url
 
+# دالة تتبع تحويل روابط ياسين تيفي برمجياً لمساعدة أجهزة الريسيفر التي لا تدعم الـ 302 Redirect
+def resolve_yacine_redirect(session, raw_url):
+    yacine_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+    headers = {
+        "User-Agent": yacine_ua
+    }
+    try:
+        # نقوم بطلب الرابط مع تعطيل التتبع التلقائي لالتقاط ترويسة التحويل يدوياً في بايثون
+        response = session.get(raw_url, headers=headers, allow_redirects=False, timeout=10)
+        if response.status_code in [301, 302, 307, 308]:
+            redirect_url = response.headers.get("Location")
+            if redirect_url:
+                print(f"      🔗 تم تتبع تحويل الرابط بنجاح إلى: {redirect_url[:50]}...")
+                return redirect_url
+    except Exception as e:
+        print(f"⚠️ فشل تتبع تحويل رابط ياسين {raw_url[:50]}: {e}")
+    return raw_url
+
 # دالة جلب قنوات ماجد سبورت
 def get_majed_sport_channels(session):
     timestamp = int(time.time() * 1000)
@@ -134,9 +152,8 @@ def get_yacine_tv_channels(session):
     yacine_lines = []
     seen_yacine_urls = set()
     
-    # يوزر إيجنت الكروم الفعال والمسؤول عن تخطي الحظر 403، مأطر بين علامتي تنصيص مزدوجة برمجياً
-    # لمنع تشتت القنوات في الريسيفر والحفاظ على تجميع الباقة بشكل كامل وموحد
-    yacine_ua = '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"'
+    # يوزر إيجنت قياسي وخالٍ من المسافات وعلامات التنصيص لتجنب تشتت المجموعات على الريسيفر
+    yacine_ua = "AppleCoreMedia/1.0.0.16G77"
     
     print("   📡 جاري جلب الأقسام الرئيسية لـ Yacine TV...")
     categories_data = make_yacine_request(session, "/api/categories")
@@ -177,7 +194,7 @@ def get_yacine_tv_channels(session):
                         else:
                             ch_list = [ch_detail]
                     
-                    # الدوران على جميع جودات القناة المتاحة وإضافتها بالاسم المنسق
+                    # الدوران على جميع جودات القناة المتاحة وإضافتها بالاسم المنسق بعد حل مشكلة التوجيه
                     for stream_item in ch_list:
                         if not isinstance(stream_item, dict):
                             continue
@@ -185,22 +202,26 @@ def get_yacine_tv_channels(session):
                         s_url = stream_item.get("url", "").strip() or stream_item.get("data", {}).get("url", "").strip()
                         if s_url and s_url not in seen_yacine_urls:
                             s_url = s_url.replace("live///", "live/").strip()
-                            seen_yacine_urls.add(s_url)
                             
-                            stream_name = stream_item.get("name", "").strip()
-                            display_name = ch_name
+                            # 🛠️ حل الريسيفر الحاسم: تتبع وتحويل الرابط برمجياً نيابة عن الريسيفر للحصول على سيرفر البث المباشر الفعلي
+                            resolved_url = resolve_yacine_redirect(session, s_url)
                             
-                            # دمج جودة البث بالاسم لتبدو واضحة (مثال: beIN Sports 1 - FHD)
-                            if stream_name and stream_name.lower() != ch_name.lower() and stream_name.lower() not in ch_name.lower():
-                                display_name = f"{ch_name} - {stream_name}"
-                            
-                            entry = (
-                                f'#EXTINF:-1 tvg-logo="{logo}" group-title="YACINE TV", {display_name}\n'
-                                f'#EXTVLCOPT:http-user-agent={yacine_ua}\n'
-                                f'{s_url}\n'
-                            )
-                            yacine_lines.append(entry)
-                            print(f"      ✔️ تم إضافة قناة من ياسين تيفي: {display_name}")
+                            if resolved_url not in seen_yacine_urls:
+                                seen_yacine_urls.add(resolved_url)
+                                
+                                stream_name = stream_item.get("name", "").strip()
+                                display_name = ch_name
+                                
+                                if stream_name and stream_name.lower() != ch_name.lower() and stream_name.lower() not in ch_name.lower():
+                                    display_name = f"{ch_name} - {stream_name}"
+                                
+                                entry = (
+                                    f'#EXTINF:-1 tvg-logo="{logo}" group-title="YACINE TV", {display_name}\n'
+                                    f'#EXTVLCOPT:http-user-agent={yacine_ua}\n'
+                                    f'{resolved_url}\n'
+                                )
+                                yacine_lines.append(entry)
+                                print(f"      ✔️ تم إضافة قناة من ياسين تيفي: {display_name}")
                             
     return "".join(yacine_lines)
 
@@ -210,7 +231,6 @@ def extract_static_channels(m3u_content):
     static_lines = []
     current_channel_block = []
     
-    # استبعاد باقة ياسين تيفي بالكامل باللغتين العربية والإنجليزية لتطهير الـ Gist تلقائياً من التشتت القديم
     exclude_keywords = [
         "api.apipremiumcdn.xyz", "yyyylive", "YALLA LIVE",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "modyleech.workers.dev",
@@ -401,7 +421,7 @@ for payload in basha_payloads:
                 
                 vlc_opts_str = "\n".join(vlc_opts)
                 
-                # ⚙️ تعديل تقني حاسم وحيوي لمطابقة السيرفر الجديد بعد التحديث
+                # تنظيف مسار الرابط واستبدال live/// بـ live// لتوافق السيرفر الجديد
                 final_basha_url = re.sub(r'live/+', 'live//', raw_url).strip()
                 logo = channel.get('logo', '').strip()
                 group_title = "AL BASHA TV"
