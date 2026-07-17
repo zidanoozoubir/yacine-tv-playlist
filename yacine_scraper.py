@@ -133,7 +133,10 @@ def make_yacine_request(session, path):
 def get_yacine_tv_channels(session):
     yacine_lines = []
     seen_yacine_urls = set()
-    yacine_ua = "okhttp/4.12.0"
+    
+    # يوزر إيجنت الكروم الفعال والمسؤول عن تخطي الحظر 403، مأطر بين علامتي تنصيص مزدوجة برمجياً
+    # لمنع تشتت القنوات في الريسيفر والحفاظ على تجميع الباقة بشكل كامل وموحد
+    yacine_ua = '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"'
     
     print("   📡 جاري جلب الأقسام الرئيسية لـ Yacine TV...")
     categories_data = make_yacine_request(session, "/api/categories")
@@ -187,6 +190,7 @@ def get_yacine_tv_channels(session):
                             stream_name = stream_item.get("name", "").strip()
                             display_name = ch_name
                             
+                            # دمج جودة البث بالاسم لتبدو واضحة (مثال: beIN Sports 1 - FHD)
                             if stream_name and stream_name.lower() != ch_name.lower() and stream_name.lower() not in ch_name.lower():
                                 display_name = f"{ch_name} - {stream_name}"
                             
@@ -206,6 +210,7 @@ def extract_static_channels(m3u_content):
     static_lines = []
     current_channel_block = []
     
+    # استبعاد باقة ياسين تيفي بالكامل باللغتين العربية والإنجليزية لتطهير الـ Gist تلقائياً من التشتت القديم
     exclude_keywords = [
         "api.apipremiumcdn.xyz", "yyyylive", "YALLA LIVE",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "modyleech.workers.dev",
@@ -396,13 +401,12 @@ for payload in basha_payloads:
                 
                 vlc_opts_str = "\n".join(vlc_opts)
                 
-                # ⚙️ تعديل تقني حاسم وحيوي لمطابقة السيرفر الجديد (217.60.15.182) بعد التحديث:
-                # نقوم بتهيئة مسار البث ليحتوي على شرطتين مائلتين بالضبط بعد كلمة live لتمرير المصادقة بنجاح كما في الهاتف
+                # ⚙️ تعديل تقني حاسم وحيوي لمطابقة السيرفر الجديد بعد التحديث
                 final_basha_url = re.sub(r'live/+', 'live//', raw_url).strip()
                 logo = channel.get('logo', '').strip()
                 group_title = "AL BASHA TV"
 
-                # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلومة أولاً
+                # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلوبة أولاً
                 kids_match = matches_kids(channel_name)
                 if kids_match:
                     entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
