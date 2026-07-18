@@ -1,3 +1,4 @@
+
 import base64
 import requests
 import json
@@ -33,24 +34,6 @@ def get_final_url(raw_url):
             return r_redirect.headers.get('Location')
     except Exception:
         pass
-    return raw_url
-
-# دالة تتبع تحويل روابط ياسين تيفي برمجياً لمساعدة أجهزة الريسيفر التي لا تدعم الـ 302 Redirect
-def resolve_yacine_redirect(session, raw_url):
-    yacine_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
-    headers = {
-        "User-Agent": yacine_ua
-    }
-    try:
-        # نقوم بطلب الرابط مع تعطيل التتبع التلقائي لالتقاط ترويسة التحويل يدوياً في بايثون
-        response = session.get(raw_url, headers=headers, allow_redirects=False, timeout=10)
-        if response.status_code in [301, 302, 307, 308]:
-            redirect_url = response.headers.get("Location")
-            if redirect_url:
-                print(f"      🔗 تم تتبع تحويل الرابط بنجاح إلى: {redirect_url[:50]}...")
-                return redirect_url
-    except Exception as e:
-        print(f"⚠️ فشل تتبع تحويل رابط ياسين {raw_url[:50]}: {e}")
     return raw_url
 
 # دالة جلب قنوات ماجد سبورت
@@ -111,120 +94,146 @@ def get_majed_sport_channels(session):
         print(f"⚠️ فشل جلب باقة ماجد سبورت بسبب: {e}")
     return "".join(majed_lines)
 
-# دالة فك التشفير التلقائية المعتمدة على معطيات ياسين تيفي
-def decrypt_yacine_data(enc_data, key):
-    try:
-        dec_bytes = base64.b64decode(enc_data.encode("ascii"))
-        result = bytearray()
-        for i in range(len(dec_bytes)):
-            result.append(dec_bytes[i] ^ ord(key[i % len(key)]))
-        return result.decode("utf-8", errors="ignore")
-    except Exception:
-        return ""
-
-# دالة الاتصال بالـ API وفك تشفيره ديناميكياً لياسين تيفي
-def make_yacine_request(session, path):
-    api_url = "https://def.yacinelive.com"
-    base_key = "c!xZj+N9&G@Ev@vw"
+# دالة جلب وتصفية باقة قنوات تطبيق OPTIKAL TV الجديد بالكامل (بنفس دقة وتفاصيل الباشا)
+def get_optikal_channels(session):
+    seen_urls = set()
+    base_url = "http://go8knm.optikl.ink/Albsh/api.php"
+    handshake_url = "http://go8knm.optikl.ink/method/api.php?action=online"
     
     headers = {
-        "User-Agent": "okhttp/4.12.0",
-        "Accept": "application/json"
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)",
+        "Connection": "Keep-Alive",
+        "Accept-Encoding": "gzip"
     }
     
+    # فصل قنوات الأطفال لتظهر في المقدمة دائماً كباقة الباشا
+    kids_channels_list = []
+    regular_channels_list = []
+    matched_count = 0
+    
+    # خطوة محاكاة نشاط الهاتف (مصافحة الاتصال الأولية)
+    print("   📡 جاري عمل مصافحة اتصال (Handshake) مع سيرفر OPTIKAL TV...")
     try:
-        response = session.get(api_url + path, headers=headers, timeout=12)
-        if response.status_code == 200:
-            timestamp = str(int(time.time()))
-            if "T" in response.headers:
-                timestamp = response.headers["T"]
-            elif "t" in response.headers:
-                timestamp = response.headers["t"]
-            
-            decrypted_json = decrypt_yacine_data(response.text, base_key + timestamp)
-            return json.loads(decrypted_json)
+        session.get(handshake_url, headers=headers, timeout=10)
     except Exception as e:
-        print(f"⚠️ فشل الاتصال بـ API ياسين للمسار {path}: {e}")
-    return None
-
-# دالة جلب وتصفية قنوات بيين سبورتس وبيين ماكس فقط بكل جوداتها من ياسين تيفي
-def get_yacine_tv_channels(session):
-    yacine_lines = []
-    seen_yacine_urls = set()
-    
-    # ⚙️ التعديل النهائي والحاسم لقسم ياسين تيفي فقط: استخدام يوزر إيجنت الكروم الكامل والمطابق تماماً لتشغيل الرياضة
-    # مع تأطيره برمجياً بعلامتي تنصيص مزدوجة "" لمنع تشتت الباقات وجمع القنوات كاملة في الريسيفر
-    yacine_ua = '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"'
-    
-    print("   📡 جاري جلب الأقسام الرئيسية لـ Yacine TV...")
-    categories_data = make_yacine_request(session, "/api/categories")
-    if not categories_data:
-        return ""
-    
-    categories = categories_data if isinstance(categories_data, list) else categories_data.get("data", [])
-    
-    for cat in categories:
-        cat_id = cat.get("id")
-        
-        channels_data = make_yacine_request(session, f"/api/categories/{cat_id}/channels")
-        if not channels_data:
-            continue
+         print(f"⚠️ تنبيه: فشل مصافحة الاتصال الأولية ولكن سنحاول الاستمرار: {e}")
+         
+    print("   📡 جاري جلب الأقسام لتصفية وفلترة محتواها بدقة الباشا...")
+    try:
+        # جلب قائمة الأقسام والبث المباشر
+        response = session.get(f"{base_url}?cmd=live", headers=headers, timeout=12)
+        if response.status_code == 200:
+            groups_data = response.json()
+            groups = groups_data.get("data", [])
             
-        channels = channels_data if isinstance(channels_data, list) else channels_data.get("data", [])
-        
-        for ch in channels:
-            ch_id = ch.get("id")
-            ch_name = ch.get("name", "Channel").strip()
-            ch_name_lower = ch_name.lower()
-            
-            # فلترة ذكية لضمان جلب قنوات بيين سبورت وبيين ماكس فقط بجميع جوداتها
-            if "bein" in ch_name_lower:
-                logo = ch.get("image", "").strip() or ch.get("logo", "").strip()
+            for group in groups:
+                group_id = group.get("id")
+                group_title = group.get("group_title", "").strip()
                 
-                # جلب تفاصيل القناة التي تحتوي على روابط الجودات المتعددة
-                ch_detail = make_yacine_request(session, f"/api/channel/{ch_id}")
-                if ch_detail:
-                    ch_list = []
-                    if isinstance(ch_detail, list):
-                        ch_list = ch_detail
-                    elif isinstance(ch_detail, dict):
-                        if "data" in ch_detail and isinstance(ch_detail["data"], list):
-                            ch_list = ch_detail["data"]
-                        elif "channels" in ch_detail and isinstance(ch_detail["channels"], list):
-                            ch_list = ch_detail["channels"]
-                        else:
-                            ch_list = [ch_detail]
+                if not group_id:
+                    continue
+                
+                # جلب قنوات القسم المعني
+                ch_response = session.get(f"{base_url}?cmd=get_content&id={group_id}", headers=headers, timeout=12)
+                if ch_response.status_code == 200:
+                    ch_data = ch_response.json()
+                    channels = ch_data.get("data", [])
                     
-                    # الدوران على جميع جودات القناة المتاحة وإضافتها بالاسم المنسق
-                    for stream_item in ch_list:
-                        if not isinstance(stream_item, dict):
+                    for ch in channels:
+                        ch_name = ch.get("name", "").strip()
+                        raw_url = ch.get("url", "").strip()
+                        
+                        if not raw_url or raw_url in seen_urls:
+                            continue
+                            
+                        ch_name_lower = ch_name.lower()
+                        
+                        # تصفية واستبعاد الأقسام غير العربية أو غير الفرنسية المستهدفة
+                        exclude_tags = [
+                            "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
+                            "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "hu", "ro", "dk", "usa",
+                            " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ",
+                            "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]",
+                            "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
+                        ]
+                        
+                        if any(tag in ch_name_lower for tag in exclude_tags):
                             continue
                         
-                        s_url = stream_item.get("url", "").strip() or stream_item.get("data", {}).get("url", "").strip()
-                        if s_url and s_url not in seen_yacine_urls:
-                            s_url = s_url.replace("live///", "live/").strip()
+                        # استخراج الترويسات الأمنية للبث المباشر إن وجدت
+                        ch_ua = ch.get("user_agent", "").strip()
+                        vlc_opts = []
+                        if ch_ua:
+                            vlc_opts.append(f'#EXTVLCOPT:http-user-agent={ch_ua}')
+                        else:
+                            vlc_opts.append(f'#EXTVLCOPT:http-user-agent=Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)')
+                        
+                        vlc_opts_str = "\n".join(vlc_opts)
+                        ch_logo = ch.get("logo", "").strip()
+                        
+                        # 1. فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلوبة أولاً لفرزها بالمقدمة
+                        kids_match = matches_kids(ch_name)
+                        if kids_match:
+                            entry = f'#EXTINF:-1 tvg-logo="{ch_logo}" group-title="OPTIKAL - {group_title}", {ch_name}\n'
+                            entry += f'{vlc_opts_str}\n'
+                            entry += f'{raw_url}\n'
                             
-                            # تتبع وتحويل الرابط برمجياً نيابة عن الريسيفر للحصول على سيرفر البث المباشر الفعلي وتخطي الـ 302
-                            resolved_url = resolve_yacine_redirect(session, s_url)
+                            kids_channels_list.append(entry)
+                            seen_urls.add(raw_url)
+                            matched_count += 1
+                            continue
                             
-                            if resolved_url not in seen_yacine_urls:
-                                seen_yacine_urls.add(resolved_url)
+                        # 2. فحص قنوات beIN
+                        is_bein = "bein" in ch_name_lower
+                        
+                        # 3. فحص القنوات العربية بريميوم
+                        is_arabic_premium = False
+                        premium_keywords = [
+                            "osn", "netflix", "hbo", "amazon", "vip", "shahid", 
+                            "box office", "boxoffice", "box-office", "بوكس", 
+                            "al fajer", "fajer", "الفجر",
+                            "stc", "thamanya", "ثمانية",
+                            "alkass", "الكأس", "الكاس",
+                            "alwan", "ألوان", "الوان",
+                            "mbc", "ام بي سي"
+                        ]
+                        if any(kw in ch_name_lower for kw in premium_keywords):
+                            has_arabic_chars = any('\u0600' <= char <= '\u06FF' for char in ch_name)
+                            has_foreign_tag = any(tag in ch_name_lower for tag in ["fr:", "fr ", "(fr)", "[fr]", " en ", " es ", " de "])
+                            if has_arabic_chars or not has_foreign_tag:
+                                is_arabic_premium = True
                                 
-                                stream_name = stream_item.get("name", "").strip()
-                                display_name = ch_name
+                        # 4. فحص القنوات الفرنسية الترفيهية والرياضية المستهدفة
+                        is_french_target = False
+                        french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
+                        if any(tag in ch_name_lower for tag in french_tags) or "canal+" in ch_name_lower:
+                            french_keywords = [
+                                "tf1", "m6", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
+                                "ocs", "cine", "ciné", "gulli", "tiji", "cartoon", "disney", 
+                                "nickelodeon", "nat geo", "national geo", "discovery", "ushuaia", 
+                                "histoire", "science", "action", "w9", "tmc", "tfx"
+                            ]
+                            if any(kw in ch_name_lower for kw in french_keywords):
+                                is_french_target = True
                                 
-                                if stream_name and stream_name.lower() != ch_name.lower() and stream_name.lower() not in ch_name.lower():
-                                    display_name = f"{ch_name} - {stream_name}"
-                                
-                                entry = (
-                                    f'#EXTINF:-1 tvg-logo="{logo}" group-title="YACINE TV", {display_name}\n'
-                                    f'#EXTVLCOPT:http-user-agent={yacine_ua}\n'
-                                    f'{resolved_url}\n'
-                                )
-                                yacine_lines.append(entry)
-                                print(f"      ✔️ تم إضافة قناة من ياسين تيفي: {display_name}")
+                        # إضافة القنوات المفلترة بنجاح
+                        if is_bein or is_arabic_premium or is_french_target:
+                            entry = f'#EXTINF:-1 tvg-logo="{ch_logo}" group-title="OPTIKAL - {group_title}", {ch_name}\n'
+                            entry += f'{vlc_opts_str}\n'
+                            entry += f'{raw_url}\n'
                             
-    return "".join(yacine_lines)
+                            regular_channels_list.append(entry)
+                            seen_urls.add(raw_url)
+                            matched_count += 1
+                            
+            print(f"      🎯 تم تصفية واستخراج ({matched_count}) قناة بجودة الباشا من سيرفر OPTIKAL TV بنجاح.")
+        else:
+            print(f"⚠️ استجابة سيرفر OPTIKAL TV خاطئة بكود: {response.status_code}")
+    except Exception as e:
+        print(f"⚠️ فشل الاتصال بـ API OPTIKAL TV بسبب: {e}")
+        
+    # دمج وتصدير باقة قنوات الأطفال في الأعلى كالباشا تليها باقي القنوات الرياضية والترفيهية
+    return "".join(kids_channels_list) + "".join(regular_channels_list)
 
 # دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن لحمايتها ومنع تسرب القنوات المؤقتة
 def extract_static_channels(m3u_content):
@@ -235,7 +244,8 @@ def extract_static_channels(m3u_content):
     exclude_keywords = [
         "api.apipremiumcdn.xyz", "yyyylive", "YALLA LIVE",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "modyleech.workers.dev",
-        "ycn-redirect", "cinemesh.online", "yacinelive", "YACINE TV", "مجموعة ياسين تيفي"
+        "ycn-redirect", "cinemesh.online", "yacinelive", "YACINE TV", "مجموعة ياسين تيفي",
+        "optikl.ink", "OPTIKAL TV", "OPTIKAL"
     ]
 
     for line in lines:
@@ -335,14 +345,20 @@ except Exception as e:
 headers_list = [
     "# ==================== مجموعة قنوات LIVE ====================",
     "# ==================== مجموعة قنوات AL BASHA TV ====================",
-    "# ==================== مجموعة ياسين تيفي ====================",
+    "# ==================== مجموعة قنوات OPTIKAL TV ====================",
     "# ==================== قنوات YALLA LIVE (مباريات جارية) ====================",
     "# ==================== قنواتك اليدوية والثابتة ===================="
 ]
 
 prev_live = extract_section_by_headers(current_content, headers_list[0], headers_list[1:])
 prev_basha = extract_section_by_headers(current_content, headers_list[1], headers_list[2:])
-prev_yacine = extract_section_by_headers(current_content, headers_list[2], headers_list[3:])
+
+# آلية مرنة لاسترجاع القنوات السابقة أثناء التحول للباقة الجديدة
+prev_optikal = extract_section_by_headers(current_content, headers_list[2], headers_list[3:])
+if not prev_optikal.strip():
+    # في حال أول تشغيل للسكربت الجديد، نبحث عن الترويسة القديمة لياسين تيفي لعدم فقدان البيانات مؤقتاً
+    prev_optikal = extract_section_by_headers(current_content, "# ==================== مجموعة ياسين تيفي ====================", headers_list[3:])
+
 prev_yalla = extract_section_by_headers(current_content, headers_list[3], headers_list[4:])
 
 session = create_session()
@@ -422,12 +438,12 @@ for payload in basha_payloads:
                 
                 vlc_opts_str = "\n".join(vlc_opts)
                 
-                # تنظيف مسار الرابط واستبدال live/// بـ live// لتوافق السيرفر الجديد
+                # ⚙️ تعديل تقني حاسم لمطابقة السيرفر الجديد بعد التحديث
                 final_basha_url = re.sub(r'live/+', 'live//', raw_url).strip()
                 logo = channel.get('logo', '').strip()
                 group_title = "AL BASHA TV"
 
-                # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلوبة أولاً
+                # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلومة أولاً
                 kids_match = matches_kids(channel_name)
                 if kids_match:
                     entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
@@ -492,16 +508,16 @@ else:
     print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح.")
 
 
-# 3.5 جلب وتصفية باقة قنوات ياسين تيفي (Yacine TV) - بيين سبورتس وبيين ماكس فقط بكل الجودات
-print("\n🚀 جاري جلب قنوات مجموعة ياسين تيفي (Yacine TV)...")
-yacine_separator = "# ==================== مجموعة ياسين تيفي ===================="
+# 3.5 جلب وتجهيز باقة القنوات الجديدة من تطبيق OPTIKAL TV بتصفية تطابق الباشا تيفي
+print("\n🚀 جاري جلب وتصفية قنوات مجموعة OPTIKAL TV الجديدة...")
+optikal_separator = "# ==================== مجموعة قنوات OPTIKAL TV ===================="
 
-yacine_content = get_yacine_tv_channels(session)
+optikal_content = get_optikal_channels(session)
 
-# تعويض وقائي ذكي لباقة ياسين تيفي في حال عطل الشبكة المؤقت
-if not yacine_content.strip() and prev_yacine.strip():
-    print("🛡️ فشل جلب باقة ياسين تيفي، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
-    yacine_content = prev_yacine
+# تعويض وقائي ذكي لباقة OPTIKAL في حال عطل الشبكة المؤقت
+if not optikal_content.strip() and prev_optikal.strip():
+    print("🛡️ فشل جلب باقة OPTIKAL TV، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
+    optikal_content = prev_optikal
 
 
 # 4. جلب وتنسيق قنوات Yalla Live للمباريات الجارية حالياً بسيرفرات مايكروسوفت المستقرة بالصوت والصورة
@@ -561,7 +577,7 @@ if yalla_api_failed and prev_yalla.strip():
 
 
 # 5. دمج المحتوى بالترتيب مع قنواتك اليدوية وحفظ وتحديث الـ Gist الخاص بك
-final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yacine_separator}\n{yacine_content}\n\n{yalla_separator}\n{yalla_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
+final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{optikal_separator}\n{optikal_content}\n\n{yalla_separator}\n{yalla_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
 
 print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
 update_data = {
@@ -575,6 +591,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة وجاهزة للعمل بالصوت والصورة على كافة أجهزة منزلك ومنزل والدك.")
+    print("🎉 تم التحديث بنجاح! السيرفر الجديد يعمل الآن بنفس جودة وفلترة الباشا تيفي على كافة أجهزتك.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
