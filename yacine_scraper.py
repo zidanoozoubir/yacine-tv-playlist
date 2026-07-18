@@ -1,4 +1,3 @@
-
 import base64
 import requests
 import json
@@ -94,7 +93,7 @@ def get_majed_sport_channels(session):
         print(f"⚠️ فشل جلب باقة ماجد سبورت بسبب: {e}")
     return "".join(majed_lines)
 
-# دالة جلب وتصفية باقة قنوات تطبيق OPTIKAL TV الجديد بالكامل (بنفس دقة وتفاصيل الباشا)
+# دالة جلب وتصفية باقة قنوات تطبيق OPTIKAL TV الجديد بناءً على اهتماماتك المحددة
 def get_optikal_channels(session):
     seen_urls = set()
     base_url = "http://go8knm.optikl.ink/Albsh/api.php"
@@ -106,34 +105,47 @@ def get_optikal_channels(session):
         "Accept-Encoding": "gzip"
     }
     
-    # فصل قنوات الأطفال لتظهر في المقدمة دائماً كباقة الباشا
+    # تصنيف واستهداف الأقسام ذات الاهتمام لتقليل الطلبات وضمان عدم الحظر من الخادم
+    target_sections = [
+        "bein", "max", "sport", "ssc", "osn", "mbc", "kids", "أطفال", "كرتون", 
+        "عربي", "arabic", "nilesat", "alkass", "premium"
+    ]
+    
     kids_channels_list = []
     regular_channels_list = []
     matched_count = 0
     
-    # خطوة محاكاة نشاط الهاتف (مصافحة الاتصال الأولية)
     print("   📡 جاري عمل مصافحة اتصال (Handshake) مع سيرفر OPTIKAL TV...")
     try:
         session.get(handshake_url, headers=headers, timeout=10)
     except Exception as e:
          print(f"⚠️ تنبيه: فشل مصافحة الاتصال الأولية ولكن سنحاول الاستمرار: {e}")
          
-    print("   📡 جاري جلب الأقسام لتصفية وفلترة محتواها بدقة الباشا...")
+    print("   📡 جاري جلب الأقسام لتصفية وفلترة محتواها بحسب اهتماماتك المحددة في OPTIKAL TV...")
     try:
-        # جلب قائمة الأقسام والبث المباشر
         response = session.get(f"{base_url}?cmd=live", headers=headers, timeout=12)
         if response.status_code == 200:
             groups_data = response.json()
             groups = groups_data.get("data", [])
             
+            print(f"      📁 تم العثور على {len(groups)} قسم رئيسي للبث.")
             for group in groups:
                 group_id = group.get("id")
                 group_title = group.get("group_title", "").strip()
+                group_title_lower = group_title.lower()
                 
                 if not group_id:
                     continue
                 
-                # جلب قنوات القسم المعني
+                # تخطي الأقسام التي لا تدخل ضمن نطاق اهتماماتك لتفادي حظر الـ Rate Limit
+                if not any(kw in group_title_lower for kw in target_sections):
+                    continue
+                
+                print(f"      📥 جاري جلب قنوات القسم المطلوب: {group_title}...")
+                
+                # تأخير زمني لتفادي تقييد الطلبات المتتالية من خادم Plesk/Nginx
+                time.sleep(0.4)
+                
                 ch_response = session.get(f"{base_url}?cmd=get_content&id={group_id}", headers=headers, timeout=12)
                 if ch_response.status_code == 200:
                     ch_data = ch_response.json()
@@ -148,7 +160,7 @@ def get_optikal_channels(session):
                             
                         ch_name_lower = ch_name.lower()
                         
-                        # تصفية واستبعاد الأقسام غير العربية أو غير الفرنسية المستهدفة
+                        # استبعاد اللغات الأجنبية المحددة مسبقاً
                         exclude_tags = [
                             "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
                             "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "hu", "ro", "dk", "usa",
@@ -160,7 +172,6 @@ def get_optikal_channels(session):
                         if any(tag in ch_name_lower for tag in exclude_tags):
                             continue
                         
-                        # استخراج الترويسات الأمنية للبث المباشر إن وجدت
                         ch_ua = ch.get("user_agent", "").strip()
                         vlc_opts = []
                         if ch_ua:
@@ -171,22 +182,28 @@ def get_optikal_channels(session):
                         vlc_opts_str = "\n".join(vlc_opts)
                         ch_logo = ch.get("logo", "").strip()
                         
-                        # 1. فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلوبة أولاً لفرزها بالمقدمة
+                        # معالجة السلاشات بذكاء: الروابط الحاملة للتوكن تبقى بسلاش واحد والروابط المباشرة بسلاشين
+                        if "?token=" in raw_url:
+                            final_url = re.sub(r'live/+', 'live/', raw_url).strip()
+                        else:
+                            final_url = re.sub(r'live/+', 'live//', raw_url).strip()
+                        
+                        # 1. فحص قنوات الأطفال المطلوبة لفرزها بالمقدمة
                         kids_match = matches_kids(ch_name)
                         if kids_match:
                             entry = f'#EXTINF:-1 tvg-logo="{ch_logo}" group-title="OPTIKAL - {group_title}", {ch_name}\n'
                             entry += f'{vlc_opts_str}\n'
-                            entry += f'{raw_url}\n'
+                            entry += f'{final_url}\n'
                             
                             kids_channels_list.append(entry)
                             seen_urls.add(raw_url)
                             matched_count += 1
                             continue
                             
-                        # 2. فحص قنوات beIN
+                        # 2. فحص قنوات beIN الرياضية والترفيهية
                         is_bein = "bein" in ch_name_lower
                         
-                        # 3. فحص القنوات العربية بريميوم
+                        # 3. فحص القنوات العربية الترفيهية والرياضية بريميوم
                         is_arabic_premium = False
                         premium_keywords = [
                             "osn", "netflix", "hbo", "amazon", "vip", "shahid", 
@@ -216,23 +233,22 @@ def get_optikal_channels(session):
                             if any(kw in ch_name_lower for kw in french_keywords):
                                 is_french_target = True
                                 
-                        # إضافة القنوات المفلترة بنجاح
+                        # إضافة القنوات المفلترة بنجاح التي تدخل ضمن اهتماماتك المحددة
                         if is_bein or is_arabic_premium or is_french_target:
                             entry = f'#EXTINF:-1 tvg-logo="{ch_logo}" group-title="OPTIKAL - {group_title}", {ch_name}\n'
                             entry += f'{vlc_opts_str}\n'
-                            entry += f'{raw_url}\n'
+                            entry += f'{final_url}\n'
                             
                             regular_channels_list.append(entry)
                             seen_urls.add(raw_url)
                             matched_count += 1
                             
-            print(f"      🎯 تم تصفية واستخراج ({matched_count}) قناة بجودة الباشا من سيرفر OPTIKAL TV بنجاح.")
+            print(f"      🎯 تم تصفية واستخراج ({matched_count}) قناة توكن ومباشرة من OPTIKAL TV بنجاح.")
         else:
             print(f"⚠️ استجابة سيرفر OPTIKAL TV خاطئة بكود: {response.status_code}")
     except Exception as e:
         print(f"⚠️ فشل الاتصال بـ API OPTIKAL TV بسبب: {e}")
         
-    # دمج وتصدير باقة قنوات الأطفال في الأعلى كالباشا تليها باقي القنوات الرياضية والترفيهية
     return "".join(kids_channels_list) + "".join(regular_channels_list)
 
 # دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن لحمايتها ومنع تسرب القنوات المؤقتة
@@ -245,7 +261,7 @@ def extract_static_channels(m3u_content):
         "api.apipremiumcdn.xyz", "yyyylive", "YALLA LIVE",
         "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "modyleech.workers.dev",
         "ycn-redirect", "cinemesh.online", "yacinelive", "YACINE TV", "مجموعة ياسين تيفي",
-        "optikl.ink", "OPTIKAL TV", "OPTIKAL"
+        "optikl.ink", "OPTIKAL"
     ]
 
     for line in lines:
@@ -353,10 +369,10 @@ headers_list = [
 prev_live = extract_section_by_headers(current_content, headers_list[0], headers_list[1:])
 prev_basha = extract_section_by_headers(current_content, headers_list[1], headers_list[2:])
 
-# آلية مرنة لاسترجاع القنوات السابقة أثناء التحول للباقة الجديدة
+# آلية مرنة لاسترجاع القنوات السابقة أثناء التحول للباقة الجديدة وتغيير الترويسات
 prev_optikal = extract_section_by_headers(current_content, headers_list[2], headers_list[3:])
 if not prev_optikal.strip():
-    # في حال أول تشغيل للسكربت الجديد، نبحث عن الترويسة القديمة لياسين تيفي لعدم فقدان البيانات مؤقتاً
+    # استرداد وقائي من الأقسام المهاجرة إذا كانت متوفرة لضمان عدم الحذف في أول تشغيل
     prev_optikal = extract_section_by_headers(current_content, "# ==================== مجموعة ياسين تيفي ====================", headers_list[3:])
 
 prev_yalla = extract_section_by_headers(current_content, headers_list[3], headers_list[4:])
@@ -394,7 +410,7 @@ kids_channels_list = []
 regular_channels_list = []
 
 seen_basha_urls = set() 
-matched_count = 0
+matched_count_basha = 0
 
 for payload in basha_payloads:
     try:
@@ -438,7 +454,7 @@ for payload in basha_payloads:
                 
                 vlc_opts_str = "\n".join(vlc_opts)
                 
-                # ⚙️ تعديل تقني حاسم لمطابقة السيرفر الجديد بعد التحديث
+                # ⚙️ تعديل تقني لمطابقة السيرفر بعد التحديث
                 final_basha_url = re.sub(r'live/+', 'live//', raw_url).strip()
                 logo = channel.get('logo', '').strip()
                 group_title = "AL BASHA TV"
@@ -452,7 +468,7 @@ for payload in basha_payloads:
                     
                     kids_channels_list.append(entry)
                     seen_basha_urls.add(raw_url)
-                    matched_count += 1
+                    matched_count_basha += 1
                     continue
                 
                 # تصفية القنوات العادية والـ Premium الأخرى
@@ -493,7 +509,7 @@ for payload in basha_payloads:
                     
                     regular_channels_list.append(entry)
                     seen_basha_urls.add(raw_url)
-                    matched_count += 1
+                    matched_count_basha += 1
     except Exception as e:
         print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
 
@@ -505,10 +521,10 @@ if not basha_content.strip() and prev_basha.strip():
     print("🛡️ فشل جلب باقة الباشا ديناميكياً، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
     basha_content = prev_basha
 else:
-    print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح.")
+    print(f"🎯 تم استخراج وتصفية ({matched_count_basha}) قناة من الباشا بنجاح.")
 
 
-# 3.5 جلب وتجهيز باقة القنوات الجديدة من تطبيق OPTIKAL TV بتصفية تطابق الباشا تيفي
+# 3.5 جلب وتصفية باقة قنوات OPTIKAL TV المستهدفة
 print("\n🚀 جاري جلب وتصفية قنوات مجموعة OPTIKAL TV الجديدة...")
 optikal_separator = "# ==================== مجموعة قنوات OPTIKAL TV ===================="
 
@@ -591,6 +607,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! السيرفر الجديد يعمل الآن بنفس جودة وفلترة الباشا تيفي على كافة أجهزتك.")
+    print("🎉 تم التحديث بنجاح! السيرفرات تعمل الآن بنظام Optikal ومحتوى مخصص حسب اهتماماتك المحددة وبدون مكررات وبإبقاء الباشا القديم كما هو.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
