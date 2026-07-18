@@ -14,6 +14,9 @@ from urllib3.util import Retry
 GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
+# مستودع عالمي موحد لمنع تكرار أي رابط نهائياً في ملف M3U بأكمله
+global_seen_urls = set()
+
 # إنشاء جلسة عمل مشتركة (Session) للحفاظ على الكوكيز وتفادي الحظر
 def create_session():
     session = requests.Session()
@@ -38,6 +41,7 @@ def get_final_url(raw_url):
 
 # دالة جلب قنوات ماجد سبورت
 def get_majed_sport_channels(session):
+    global global_seen_urls
     timestamp = int(time.time() * 1000)
     config_url = f"https://www.majed-koora.live/config.json?v={timestamp}"
     headers = {
@@ -80,15 +84,17 @@ def get_majed_sport_channels(session):
                     else:
                         stream_url_with_time = f"{stream_url}?v={timestamp}"
                     
-                    full_display_name = f"{display_name}{match_info}"
-                    
-                    entry = (
-                        f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {full_display_name}\n'
-                        f'#EXTVLCOPT:http-user-agent={vlc_ua}\n'
-                        f'{stream_url_with_time}\n'
-                    )
-                    majed_lines.append(entry)
-                    print(f"      ⚽ تم جلب وتأكيد قناة ماجد سبورت: {full_display_name}")
+                    if stream_url_with_time not in global_seen_urls:
+                        global_seen_urls.add(stream_url_with_time)
+                        full_display_name = f"{display_name}{match_info}"
+                        
+                        entry = (
+                            f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {full_display_name}\n'
+                            f'#EXTVLCOPT:http-user-agent={vlc_ua}\n'
+                            f'{stream_url_with_time}\n'
+                        )
+                        majed_lines.append(entry)
+                        print(f"      ⚽ تم جلب وتأكيد قناة ماجد سبورت: {full_display_name}")
                     
     except Exception as e:
         print(f"⚠️ فشل جلب باقة ماجد سبورت بسبب: {e}")
@@ -98,11 +104,8 @@ def get_majed_sport_channels(session):
 def normalize_arabic(text):
     if not text:
         return ""
-    # تحويل الألف المقصورة والممدودة والهمزات إلى ألف عادية
     text = text.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-    # توحيد التاء المربوطة والهاء
     text = text.replace("ة", "ه")
-    # إزالة التشكيل وعلامات الإعراب
     text = re.sub(r'[\u064B-\u0652]', '', text)
     return text.strip().lower()
 
@@ -111,27 +114,24 @@ def matches_target_channels(channel_name):
     name_lower = channel_name.lower()
     name_norm = normalize_arabic(channel_name)
     
-    # 1. فحص قنوات بيين سبورت وبيين ماكس (العربية والفرنسية والإنجليزية)
     bein_en = ["bein", "be in"]
-    bein_ar = ["بين", "بيين", "بي ان"] # تغطي 'بي إن' بعد المعالجة
+    bein_ar = ["بين", "بيين", "بي ان"]
     is_bein = any(kw in name_lower for kw in bein_en) or any(kw in name_norm for kw in bein_ar)
     
-    # 2. فحص قنوات ألوان الرياضية
     alwan_en = ["alwan", "elwan"]
-    alwan_ar = ["الوان"] # تغطي 'ألوان' بعد المعالجة
+    alwan_ar = ["الوان"]
     is_alwan = any(kw in name_lower for kw in alwan_en) or any(kw in name_norm for kw in alwan_ar)
     
-    # 3. فحص قنوات الفجر
     fajer_en = ["fajer", "fajr"]
     fajer_ar = ["الفجر", "فجر"]
     is_fajer = any(kw in name_lower for kw in fajer_en) or any(kw in name_norm for kw in fajer_ar)
     
     return is_bein or is_alwan or is_fajer
 
-# دالة جلب وتصفية قنوات باقة SPORT VIP بشكل آمن وسريع (الخيار الأول المطور بالتوازي)
+# دالة جلب وتصفية قنوات باقة SPORT VIP بشكل سريع مع التحقق من التكرار العالمي
 def get_new_app_channels(session):
+    global global_seen_urls
     sport_vip_lines = []
-    seen_urls = set()
     new_app_ua = "Dalvik/2.1.0 (Linux; U; Android 9; SM-S9210 Build/PQ3A.190705.05150936)"
     base_url = "http://go8knm.optikl.ink"
     
@@ -154,7 +154,6 @@ def get_new_app_channels(session):
             print("⚠️ لم يتم العثور على أي فئات في تطبيق SPORT VIP.")
             return ""
             
-        # دالة فرعية لجلب قنوات فئة واحدة
         def fetch_group_channels(group_id, group_title):
             ch_url = f"{base_url}/Albsh/api.php?cmd=get_content&id={group_id}"
             try:
@@ -168,7 +167,6 @@ def get_new_app_channels(session):
         print(f"   ⚡ جاري فحص ومطابقة القنوات بالتوازي لتسريع العملية...")
         all_channels_data = []
         
-        # استخدام ThreadPoolExecutor للاتصال المتوازي بجميع الفئات دفعة واحدة
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             future_to_group = {
                 executor.submit(fetch_group_channels, g.get("id"), g.get("group_title")): g 
@@ -182,7 +180,6 @@ def get_new_app_channels(session):
                 except Exception:
                     pass
                     
-        # تصفية القنوات واستخراج القنوات المستهدفة فقط
         matched_count = 0
         for ch in all_channels_data:
             if not isinstance(ch, dict):
@@ -193,12 +190,12 @@ def get_new_app_channels(session):
             logo = ch.get("logo", "").strip()
             ch_ua = ch.get("user_agent", "").strip() or new_app_ua
             
-            if s_url and s_url not in seen_urls:
+            # التحقق من عدم تكرار الرابط عالمياً قبل المعالجة والإضافة
+            if s_url and s_url not in global_seen_urls:
                 if matches_target_channels(ch_name):
-                    seen_urls.add(s_url)
+                    global_seen_urls.add(s_url)
                     matched_count += 1
                     
-                    # تمرير الـ User Agent المطلوب لتشغيل القناة بنجاح
                     vlc_opts = [f'#EXTVLCOPT:http-user-agent={ch_ua}']
                     vlc_opts_str = "\n".join(vlc_opts)
                     
@@ -413,13 +410,16 @@ for payload in basha_payloads:
 
                 kids_match = matches_kids(channel_name)
                 if kids_match:
-                    entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
-                    entry += f'{vlc_opts_str}\n'
-                    entry += f'{final_basha_url}\n'
-                    
-                    kids_channels_list.append(entry)
-                    seen_basha_urls.add(raw_url)
-                    matched_count += 1
+                    # إضافة التحقق من التكرار العالمي قبل المتابعة
+                    if final_basha_url not in global_seen_urls:
+                        global_seen_urls.add(final_basha_url)
+                        entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
+                        entry += f'{vlc_opts_str}\n'
+                        entry += f'{final_basha_url}\n'
+                        
+                        kids_channels_list.append(entry)
+                        seen_basha_urls.add(raw_url)
+                        matched_count += 1
                     continue
                 
                 is_bein = "bein" in channel_name_lower
@@ -452,13 +452,16 @@ for payload in basha_payloads:
                         is_french_target = True
                 
                 if is_bein or is_arabic_premium or is_french_target:
-                    entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
-                    entry += f'{vlc_opts_str}\n'
-                    entry += f'{final_basha_url}\n'
-                    
-                    regular_channels_list.append(entry)
-                    seen_basha_urls.add(raw_url)
-                    matched_count += 1
+                    # إضافة التحقق من التكرار العالمي قبل المتابعة
+                    if final_basha_url not in global_seen_urls:
+                        global_seen_urls.add(final_basha_url)
+                        entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
+                        entry += f'{vlc_opts_str}\n'
+                        entry += f'{final_basha_url}\n'
+                        
+                        regular_channels_list.append(entry)
+                        seen_basha_urls.add(raw_url)
+                        matched_count += 1
     except Exception as e:
         print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
 
@@ -515,14 +518,18 @@ try:
                 server_num = num_match[0] if num_match else "1"
                 
                 stream_url = f"https://yyyylive{server_num}.blob.core.windows.net/live/stream/index.fmp4.m3u8"
-                display_name = f"{channel_name} - {team1} VS {team2} ({league})"
                 
-                entry = (
-                    f'#EXTINF:-1 tvg-logo="" group-title="YALLA LIVE (مباريات جارية)", {display_name}\n'
-                    f'{stream_url}\n'
-                )
-                yalla_lines.append(entry)
-                print(f"      ⚽ تم اكتشاف مباراة جارية وإضافة بثها المباشر الفعال: {display_name}")
+                # التحقق من عدم التكرار العالمي لقنوات يلا لايف
+                if stream_url not in global_seen_urls:
+                    global_seen_urls.add(stream_url)
+                    display_name = f"{channel_name} - {team1} VS {team2} ({league})"
+                    
+                    entry = (
+                        f'#EXTINF:-1 tvg-logo="" group-title="YALLA LIVE (مباريات جارية)", {display_name}\n'
+                        f'{stream_url}\n'
+                    )
+                    yalla_lines.append(entry)
+                    print(f"      ⚽ تم اكتشاف مباراة جارية وإضافة بثها المباشر الفعال: {display_name}")
         
         yalla_content = "".join(yalla_lines)
         if not yalla_content.strip():
@@ -554,6 +561,6 @@ update_data = {
 update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
 
 if update_response.status_code == 200:
-    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة وجاهزة للعمل بالصوت والصورة على كافة أجهزة منزلك ومنزل والدك وباسم باقة SPORT VIP.")
+    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة وجاهزة للعمل بالصوت والصورة على كافة أجهزة منزلك ومنزل والدك وباسم باقة SPORT VIP ودون تكرار.")
 else:
     print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
