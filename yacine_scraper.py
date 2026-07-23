@@ -1,175 +1,283 @@
-import os
-import time
+import base64
 import requests
-from collections import defaultdict
+import json
+import time
+import os
+import re
+import random
+import urllib.parse
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-# 1. جلب متغيرات البيئة الآمنة من GitHub Secrets
+# جلب معلومات الـ Gist من متغيرات البيئة الآمنة (GitHub Secrets)
 GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
-# 2. إنشاء جلسة اتصال ذكية ومقاومة للحظر والانقطاع
+# إنشاء جلسة عمل مشتركة (Session) للحفاظ على الكوكيز وتفادي الحظر
 def create_session():
     session = requests.Session()
-    # إعادة المحاولة تلقائياً 5 مرات عند حدوث بطء أو أخطاء السيرفر (500, 502, 503, 504)
-    retries = Retry(total=5, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
+    retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retries)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
 
-# 3. قائمة التصفية لاستبعاد القنوات/الدول غير المرغوبة
-EXCLUDE_TAGS = [
-    "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
-    "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)",
-    " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ",
-    "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]",
-    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
-]
+# دالة جلب رابط التوجيه (Redirect)
+def get_final_url(raw_url):
+    browser_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+    }
+    try:
+        r_redirect = requests.get(raw_url, headers=browser_headers, allow_redirects=False, timeout=10)
+        if r_redirect.status_code in [301, 302]:
+            return r_redirect.headers.get('Location')
+    except Exception:
+        pass
+    return raw_url
 
-# 4. دالة الفرز والتصنيف الدقيق
-def classify_channel(channel_name):
-    name_lower = channel_name.lower()
+# دالة جلب قنوات ماجد سبورت
+def get_majed_sport_channels(session):
+    timestamp = int(time.time() * 1000)
+    config_url = f"https://www.majed-koora.live/config.json?v={timestamp}"
+    headers = {
+        "User-Agent": "MajedSportApp",
+        "Accept": "application/json"
+    }
+    majed_lines = []
+    try:
+        response = session.get(config_url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            
+            stream_keys = {
+                "stream_high": "Majed Sport FHD",
+                "stream_medium": "Majed Sport HD",
+                "stream_low": "Majed Sport SD",
+                "stream_reserve": "Majed Sport Reserve 1",
+                "stream_reserve2": "Majed Sport Reserve 2"
+            }
+            
+            match_info = ""
+            matches = data.get("matches", [])
+            if matches:
+                first_match = matches[0]
+                team1 = first_match.get("team1", "")
+                team2 = first_match.get("team2", "")
+                comp = first_match.get("comp", "")
+                if team1 and team2:
+                    match_info = f" - {team1} VS {team2} ({comp})"
+            
+            vlc_ua = "VLC/3.0.16 LibVLC/3.0.16"
+            
+            for key, display_name in stream_keys.items():
+                stream_url = data.get(key, "").strip()
+                if stream_url:
+                    stream_url = stream_url.replace("\\/", "/").strip()
+                    
+                    if "?" in stream_url:
+                        stream_url_with_time = f"{stream_url}&v={timestamp}"
+                    else:
+                        stream_url_with_time = f"{stream_url}?v={timestamp}"
+                    
+                    full_display_name = f"{display_name}{match_info}"
+                    
+                    entry = (
+                        f'#EXTINF:-1 tvg-logo="" group-title="LIVE", {full_display_name}\n'
+                        f'#EXTVLCOPT:http-user-agent={vlc_ua}\n'
+                        f'{stream_url_with_time}\n'
+                    )
+                    majed_lines.append(entry)
+                    print(f"      ⚽ تم جلب وتأكيد قناة ماجد سبورت: {full_display_name}")
+                    
+    except Exception as e:
+        print(f"⚠️ فشل جلب باقة ماجد سبورت بسبب: {e}")
+    return "".join(majed_lines)
+
+# دالة لتصفية واستخراج القنوات اليدوية والثابتة فقط بشكل آمن
+def extract_static_channels(m3u_content):
+    lines = m3u_content.splitlines()
+    static_lines = []
+    current_channel_block = []
     
-    # استبعاد الواسمات الأجنبية غير المطلوبة
-    if any(tag in name_lower for tag in EXCLUDE_TAGS):
-        return None
-
-    # معالجة قنوات beIN بكل فئاتها
-    if "bein" in name_lower:
-        # beIN Sports الفرنسية
-        if any(kw in name_lower for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
-            return "BEIN SPORT FR"
-            
-        # beIN الترفيهية والإعلامية (أفلام، مسلسلات، فتافيت، براعم، جيو...)
-        bein_media_keywords = [
-            "movie", "movies", "mov", "cinema", "سينما", "drama", "دراما", 
-            "series", "مسلسلات", "gourmet", "gorment", "fatafeat", "فتافيت",
-            "fox", "life", "action", "bbc", "earth", "star", "world",
-            "baraeam", "baraem", "براعم", "jeem", "جيم", "nat geo", "national", "wild",
-            "box office", "boxoffice", "pop up", "popup", "media", "entertainment", 
-            "junior", "news", "اخبار", "أخبار", "افلام", "أفلام"
-        ]
-        if any(kw in name_lower for kw in bein_media_keywords):
-            return "BEIN MEDIA"
-            
-        # beIN Sports العربية الرياضية
-        return "BEIN SPORT AR"
-
-    # قنوات ألوان الرياضية
-    if any(kw in name_lower for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
-        return "ALWAN SPORT"
-
-    # قنوات الفجر
-    if "fajer" in name_lower or "الفجر" in name_lower:
-        return "AL FAJER"
-
-    # قنوات الأطفال
-    kids_keywords = [
-        "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
-        "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
-        "baraem", "براعم", "cn arabia", "cartoon network", "كرتون نتورك", "jeem", 
-        "تلفزيون جيم", "قناة جيم", "gulli", "tiji", "disney kids", "nickelodeon", "اطفال", "أطفال"
+    # تم إضافة الكلمات الدلالية لـ OPTIKAL لمنع تكرارها وحذف قنواتها تماماً من الـ Gist والريسيفر
+    exclude_keywords = [
+        "api.apipremiumcdn.xyz", "yyyylive", "YALLA LIVE",
+        "albashatv.site", "playcasta.online", "AL BASHA TV", "majed-koora.live", "modyleech.workers.dev",
+        "OPTIKAL - beIN MAX", "OPTIKAL", "optikal", "optikl.ink"
     ]
-    if any(kw in name_lower for kw in kids_keywords):
-        return "KIDS"
 
-    # قنوات الجزائر
-    algeria_keywords = [
-        "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
-        "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
-        "ennahar", "samira", "سميرة", "numidia", "نوميديا", "الوطنية", "el watania", "al24"
-    ]
-    if any(kw in name_lower for kw in algeria_keywords):
-        return "ALGERIA"
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped:
+            continue
+        
+        if line_stripped.startswith("#EXTM3U") or "=====" in line_stripped:
+            continue
+            
+        if line_stripped.startswith("#EXTINF"):
+            if current_channel_block:
+                block_str = "".join(current_channel_block)
+                if not any(kw in block_str for kw in exclude_keywords):
+                    static_lines.extend(current_channel_block)
+                    static_lines.append("")
+            current_channel_block = [line_stripped]
+        elif line_stripped.startswith("#") or line_stripped.startswith("http") or line_stripped.startswith("rtmp"):
+            if current_channel_block:
+                current_channel_block.append(line_stripped)
+            else:
+                if not any(kw in line_stripped for kw in exclude_keywords):
+                    static_lines.append(line_stripped)
+                    
+    if current_channel_block:
+        block_str = "".join(current_channel_block)
+        if not any(kw in block_str for kw in exclude_keywords):
+            static_lines.extend(current_channel_block)
+            
+    return "\n".join(static_lines).strip()
 
-    # القنوات الإخبارية العربية
-    news_keywords = ["al jazeera", "الجزيرة", "al arabiya", "العربية", "الحدث", "sky news", "سكاي نيوز", "bbc arabic", "فرانس 24", "france 24", "اخبار", "إخبارية", "اخبارية"]
-    if any(kw in name_lower for kw in news_keywords):
-        return "ARABIC NEWS"
+# دالة ذكية لاستخراج الأقسام الحالية من الـ Gist لحمايتها في حال حدوث فشل مؤقت للـ API
+def extract_section_by_headers(content, current_header, next_headers):
+    if current_header not in content:
+        return ""
+    start_idx = content.find(current_header) + len(current_header)
+    end_idx = len(content)
+    for next_header in next_headers:
+        if next_header in content:
+            pos = content.find(next_header)
+            if pos > start_idx and pos < end_idx:
+                end_idx = pos
+    return content[start_idx:end_idx].strip()
 
-    # قنوات ألوان للأفلام
-    if "alwan" in name_lower or "ألوان" in name_lower or "الوان" in name_lower:
-        return "ALWAN MOVIES"
-
-    # قنوات روتانا
-    if "rotana" in name_lower or "روتانا" in name_lower:
-        return "ROTANA"
-
-    # قنوات MBC
-    if "mbc" in name_lower or "ام بي سي" in name_lower or "إم بي سي" in name_lower:
-        return "MBC GROUP"
-
-    # قنوات بوكس أوفيس
-    if any(kw in name_lower for kw in ["box office", "boxoffice", "box-office", "بوكس أوفيس", "بوكس اوفيس"]):
-        return "BOX OFFICE"
-
-    # قنوات نتفليكس
-    if "netflix" in name_lower or "نتفليكس" in name_lower or "نتفلكس" in name_lower:
-        return "NETFLIX"
-
-    # قنوات أمازون برايم
-    if "amazon" in name_lower or "prime" in name_lower or "أمازون" in name_lower or "امازون" in name_lower:
-        return "AMAZON PRIME"
-
-    # قنوات HBO
-    if "hbo" in name_lower:
-        return "HBO"
-
-    # قنوات وثائقية
-    doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science"]
-    if any(kw in name_lower for kw in doc_keywords):
-        return "DOCUMENTARY"
-
-    # القنوات الفرنسية العامة
-    french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
-    french_kw = ["tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", "ocs", "cine", "ciné", "w9", "tmc", "tfx"]
-    if any(tag in name_lower for tag in french_tags) or any(kw in name_lower for kw in french_kw):
-        return "FRENCH"
-
+# دالة مطورة لمطابقة قنوات الأطفال المستهدفة بدقة عالية باللغتين
+def matches_kids(channel_name):
+    name_lower = channel_name.lower()
+    if any(kw in name_lower for kw in ["tom and jerry", "tom & jerry", "توم وجيري", "توم وجري"]):
+        return "Tom and Jerry"
+    if "masha" in name_lower or "ماشا" in name_lower:
+        return "Masha and the Bear"
+    if "dora" in name_lower or "دورا" in name_lower:
+        return "Dora"
+    if "spacetoon" in name_lower or "سبيستون" in name_lower or "سبيس تون" in name_lower:
+        return "Spacetoon"
+    if "wanasa" in name_lower or "وناسة" in name_lower:
+        return "Wanasat"
+    if "baraem" in name_lower or "براعم" in name_lower:
+        return "Baraem"
+    if "cn arabia" in name_lower or "cartoon network" in name_lower or "كرتون نتورك" in name_lower:
+        return "CN Arabia"
+    
+    if "jeem" in name_lower or "تلفزيون جيم" in name_lower or "قناة جيم" in name_lower or "جيم" in name_lower.split():
+        return "Jeem"
     return None
 
-# 5. جلب وتنقية القنوات من API التطبيق مع تنظيف الروابط
-def fetch_al_basha_channels(session):
-    api_url = "https://albashatv.site/api.php"
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Connection": "Keep-Alive",
-        "User-Agent": "okhttp/3.9.1"
-    }
-    payload = "method=o6&event=view"
-    
-    grouped_channels = defaultdict(list)
-    seen_urls = set()
-    total_count = 0
 
-    print("📡 جاري الاتصال بتطبيق الباشا تيفي وتحديث البث تلقائياً...")
+# 1. جلب المحتوى الحالي من الـ Gist وتصفية قنواتك اليدوية وحفظها احتياطياً
+print("📂 جاري جلب محتوى الـ Gist الحالي للنسخ الاحتياطي وحفظ القنوات...")
+gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
+gist_headers = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github+json"
+}
+
+static_clean = ""
+current_content = ""
+filename = "kz.m3u"
+
+try:
+    gist_response = requests.get(gist_api_url, headers=gist_headers, timeout=15)
+    if gist_response.status_code == 200:
+        gist_data = gist_response.json()
+        filename = list(gist_data['files'].keys())[0]
+        current_content = gist_data['files'][filename]['content']
+        
+        static_clean = extract_static_channels(current_content)
+        print("✔️ تم تحديد وحفظ القنوات اليدوية والثابتة بنجاح.")
+    else:
+        print(f"❌ فشل جلب الـ Gist الحالي. كود الحالة: {gist_response.status_code}")
+        exit(1)
+except Exception as e:
+    print(f"❌ خطأ أثناء الاتصال بـ Gist API: {e}")
+    exit(1)
+
+# ترويسات الأقسام لتسهيل استخراج الحالة السابقة كـ Fail-safe
+headers_list = [
+    "# ==================== مجموعة قنوات LIVE ====================",
+    "# ==================== مجموعة قنوات AL BASHA TV ====================",
+    "# ==================== قنوات YALLA LIVE (مباريات جارية) ====================",
+    "# ==================== قنواتك اليدوية والثابتة ===================="
+]
+
+prev_live = extract_section_by_headers(current_content, headers_list[0], headers_list[1:])
+prev_basha = extract_section_by_headers(current_content, headers_list[1], headers_list[2:])
+prev_yalla = extract_section_by_headers(current_content, headers_list[2], headers_list[3:])
+
+session = create_session()
+final_m3u_content = ""
+
+# 2. كشف وتجهيز باقة قنوات LIVE المباشرة
+print("\n⚽ جاري كشف وتجهيز مجموعة قنوات LIVE المباشرة...")
+live_separator = "# ==================== مجموعة قنوات LIVE ===================="
+
+live_content = get_majed_sport_channels(session)
+
+# تعويض وقائي ذكي لباقة LIVE في حال عطل الشبكة المؤقت
+if not live_content.strip() and prev_live.strip():
+    print("🛡️ فشل جلب باقة LIVE، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
+    live_content = prev_live
+
+
+# 3. جلب وتصفية باقة قنوات الباشا تيفي (Al Basha TV) وتنقيتها لـ VLC والريسيفرات
+print("\n🚀 جاري جلب قنوات الباشا تيفي (Al Basha TV)...")
+basha_separator = "# ==================== مجموعة قنوات AL BASHA TV ===================="
+basha_api_url = "https://albashatv.site/api.php"
+basha_headers = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    "Connection": "Keep-Alive",
+    "User-Agent": "okhttp/3.9.1"
+}
+
+basha_payloads = ["method=o6&event=view"]
+basha_content = ""
+
+# فصل قنوات الأطفال لتظهر في المقدمة دائماً
+kids_channels_list = []
+regular_channels_list = []
+
+seen_basha_urls = set() 
+matched_count = 0
+
+for payload in basha_payloads:
     try:
-        response = session.post(api_url, headers=headers, data=payload, timeout=20)
-        if response.status_code == 200:
-            channels = response.json()
+        basha_response = session.post(basha_api_url, headers=basha_headers, data=payload, timeout=15)
+        if basha_response.status_code == 200:
+            basha_channels = basha_response.json()
             
-            if not isinstance(channels, list):
-                print("⚠️ تنبيه: استجابة السيرفر غير متوافقة أو تحت الصيانة.")
-                return grouped_channels, 0
-
-            for channel in channels:
-                channel_name = channel.get('name', '').strip()
-                raw_url = channel.get('url', '').strip()
+            for channel in basha_channels:
+                channel_name = channel.get('name', '')
+                raw_url = channel.get('url', '')
                 
-                if not raw_url or raw_url in seen_urls:
+                if not raw_url or raw_url in seen_basha_urls:
+                    continue
+                    
+                channel_name_lower = channel_name.lower()
+                
+                exclude_tags = [
+                    "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
+                    "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "hu", "ro", "dk", "usa",
+                    " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ",
+                    "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]",
+                    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
+                ]
+                
+                if any(tag in channel_name_lower for tag in exclude_tags):
                     continue
                 
-                group_title = classify_channel(channel_name)
-                if not group_title:
-                    continue
-                
+                # استخراج الترويسات الأمنية من الـ API
                 basha_ua = channel.get('user_agent', '').strip()
                 referer = channel.get('refrens', '').strip()
                 cookie = channel.get('cookie', '').strip()
-                logo = channel.get('logo', '').strip()
                 
+                # بناء خيارات المشغل الخارجي لـ VLC ومطابقة ترويسة الهاتف (Icy-MetaData)
                 vlc_opts = ["#EXTVLCOPT:http-header=Icy-MetaData: 1"]
                 if basha_ua:
                     vlc_opts.append(f'#EXTVLCOPT:http-user-agent={basha_ua}')
@@ -180,97 +288,148 @@ def fetch_al_basha_channels(session):
                 
                 vlc_opts_str = "\n".join(vlc_opts)
                 
-                # إصلاح مسارات الروابط والتخلص من التكرار المسبب للأخطاء
-                final_url = raw_url.strip().replace("live///", "live/").replace("live//", "live/")
+                # ⚙️ التعديل الجوهري: تنظيف مسار الرابط واستبدال live/// بـ live/ لتطابق البث الفعلي تماماً كما في الهاتف
+                final_basha_url = raw_url.replace("live///", "live/").strip()
+                logo = channel.get('logo', '').strip()
+                group_title = "AL BASHA TV"
+
+                # فحص ما إذا كانت القناة هي إحدى قنوات الأطفال المطلوبة أولاً
+                kids_match = matches_kids(channel_name)
+                if kids_match:
+                    entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
+                    entry += f'{vlc_opts_str}\n'
+                    entry += f'{final_basha_url}\n'
+                    
+                    kids_channels_list.append(entry)
+                    seen_basha_urls.add(raw_url)
+                    matched_count += 1
+                    continue
                 
-                entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n'
-                entry += f'{vlc_opts_str}\n'
-                entry += f'{final_url}'
+                # تصفية القنوات العادية والـ Premium الأخرى
+                is_bein = "bein" in channel_name_lower
                 
-                grouped_channels[group_title].append(entry)
-                seen_urls.add(raw_url)
-                total_count += 1
+                is_arabic_premium = False
+                premium_keywords = [
+                    "osn", "netflix", "hbo", "amazon", "vip", "shahid", 
+                    "box office", "boxoffice", "box-office", "بوكس", 
+                    "al fajer", "fajer", "الفجر",
+                    "stc", "thamanya", "ثمانية",
+                    "alkass", "الكأس", "الكاس",
+                    "alwan", "ألوان", "الوان",
+                    "mbc", "ام بي سي"
+                ]
+                if any(kw in channel_name_lower for kw in premium_keywords):
+                    has_arabic_chars = any('\u0600' <= char <= '\u06FF' for char in channel_name)
+                    has_foreign_tag = any(tag in channel_name_lower for tag in ["fr:", "fr ", "(fr)", "[fr]", " en ", " es ", " de "])
+                    if has_arabic_chars or not has_foreign_tag:
+                        is_arabic_premium = True
                 
+                is_french_target = False
+                french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
+                if any(tag in channel_name_lower for tag in french_tags) or "canal+" in channel_name_lower:
+                    french_keywords = [
+                        "tf1", "m6", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
+                        "ocs", "cine", "ciné", "gulli", "tiji", "cartoon", "disney", 
+                        "nickelodeon", "nat geo", "national geo", "discovery", "ushuaia", 
+                        "histoire", "science", "action", "w9", "tmc", "tfx"
+                    ]
+                    if any(kw in channel_name_lower for kw in french_keywords):
+                        is_french_target = True
+                
+                if is_bein or is_arabic_premium or is_french_target:
+                    entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}", {channel_name}\n'
+                    entry += f'{vlc_opts_str}\n'
+                    entry += f'{final_basha_url}\n'
+                    
+                    regular_channels_list.append(entry)
+                    seen_basha_urls.add(raw_url)
+                    matched_count += 1
     except Exception as e:
-        print(f"❌ خطأ شبكة أثناء الاتصال بالسيرفر: {e}")
+        print(f"❌ خطأ أثناء جلب قنوات الباشا: {e}")
+
+# دمج باقة الأطفال في مقدمة باقة الباشا تيفي تليها القنوات العادية الأخرى
+basha_content = "".join(kids_channels_list) + "".join(regular_channels_list)
+
+# تعويض وقائي ذكي لباقة الباشا تيفي في حال فشل الاتصال المؤقت
+if not basha_content.strip() and prev_basha.strip():
+    print("🛡️ فشل جلب باقة الباشا ديناميكياً، تم استرداد القنوات السابقة بنجاح لحمايتها من الحذف.")
+    basha_content = prev_basha
+else:
+    print(f"🎯 تم استخراج وتصفية ({matched_count}) قناة من الباشا بنجاح (بما في ذلك قنوات الأطفال بالمقدمة).")
+
+
+# 4. جلب وتنسيق قنوات Yalla Live للمباريات الجارية حالياً بسيرفرات مايكروسوفت المستقرة بالصوت والصورة
+print("\n🚀 جاري جلب وتحديث باقة قنوات Yalla Live...")
+yalla_separator = "# ==================== قنوات YALLA LIVE (مباريات جارية) ===================="
+
+yalla_content = ""
+yalla_api_failed = False
+
+yalla_api_url = "https://api.apipremiumcdn.xyz/api/105/all"
+yalla_headers = {
+    "User-Agent": "Dart/3.11 (dart:io)",
+    "Accept": "application/json"
+}
+
+yalla_lines = []
+try:
+    yalla_response = session.get(yalla_api_url, headers=yalla_headers, timeout=12)
+    if yalla_response.status_code == 200:
+        yalla_data = yalla_response.json()
+        match_list = yalla_data.get("List", [])
         
-    return grouped_channels, total_count
+        for match in match_list:
+            if match.get("live") and match.get("started") and not match.get("finished"):
+                server_val = str(match.get("server", "s")).lower().strip()
+                channel_name = match.get("sound", "beIN Max")
+                team1 = match.get("name1", "Team 1")
+                team2 = match.get("name2", "Team 2")
+                league = match.get("ligue", "Live Match")
+                
+                num_match = re.findall(r'\d+', server_val)
+                server_num = num_match[0] if num_match else "1"
+                
+                stream_url = f"https://yyyylive{server_num}.blob.core.windows.net/live/stream/index.fmp4.m3u8"
+                display_name = f"{channel_name} - {team1} VS {team2} ({league})"
+                
+                entry = (
+                    f'#EXTINF:-1 tvg-logo="" group-title="YALLA LIVE (مباريات جارية)", {display_name}\n'
+                    f'{stream_url}\n'
+                )
+                yalla_lines.append(entry)
+                print(f"      ⚽ تم اكتشاف مباراة جارية وإضافة بثها المباشر الفعال: {display_name}")
+        
+        yalla_content = "".join(yalla_lines)
+        if not yalla_content.strip():
+            print("      ℹ️ لا توجد مباريات جارية حالياً في التطبيق (تم إبقاء القسم نظيفاً للـ M3U).")
+    else:
+        print(f"⚠️ استجابة سيرفر Yalla Live خاطئة: {yalla_response.status_code}")
+        yalla_api_failed = True
+except Exception as e:
+    print(f"⚠️ فشل الاتصال بسيرفر Yalla Live بسبب: {e}")
+    yalla_api_failed = True
 
-# 6. التنفيذ المباشر وحماية الملف من الضياع
-def main():
-    if not GIST_ID or not GITHUB_TOKEN:
-        print("❌ خطأ: لم يتم العثور على GIST_ID أو GIST_TOKEN في متغيرات البيئة!")
-        return
+if yalla_api_failed and prev_yalla.strip():
+    print("🛡️ فشل جلب باقة Yalla Live بسبب عطل بالشبكة، تم استرداد الحالة السابقة من الـ Gist لحمايتها.")
+    yalla_content = prev_yalla
 
-    session = create_session()
-    grouped_channels, total_count = fetch_al_basha_channels(session)
-    
-    # 🛡️ درع الحماية: إن كان عدد القنوات المجلوبة صفر بسبب الصيانة، نلغي التحديث تماماً
-    if total_count == 0:
-        print("\n🛡️ [درع الحماية]: تم رصد توقف/صيانة في سيرفر الباشا تيفي!")
-        print("🛡️ إلغاء العملية للحفاظ على القنوات القديمة شغالّة على الريسيفر بدون مسح.")
-        return
 
-    preferred_order = [
-        "BEIN SPORT AR",
-        "ALWAN SPORT",
-        "AL FAJER",
-        "BEIN SPORT FR",
-        "BEIN MEDIA",
-        "KIDS",
-        "ALGERIA",
-        "ARABIC NEWS",
-        "ALWAN MOVIES",
-        "ROTANA",
-        "MBC GROUP",
-        "BOX OFFICE",
-        "NETFLIX",
-        "AMAZON PRIME",
-        "HBO",
-        "DOCUMENTARY",
-        "FRENCH"
-    ]
-    
-    m3u_lines = ["#EXTM3U"]
-    
-    print("\n📊 إحصائيات القنوات المجلوبة لكل مجموعة:")
-    for group in preferred_order:
-        if group in grouped_channels and grouped_channels[group]:
-            count = len(grouped_channels[group])
-            print(f"   🔹 {group}: {count} قناة")
-            m3u_lines.extend(grouped_channels[group])
-            
-    final_m3u_content = "\n".join(m3u_lines)
-    
-    # تحديث الـ Gist في GitHub
-    gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
-    gist_headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github+json"
+# 5. دمج المحتوى بالترتيب مع قنواتك اليدوية وحفظ وتحديث الـ Gist الخاص بك
+final_m3u_content = f"#EXTM3U\n\n{live_separator}\n{live_content}\n\n{basha_separator}\n{basha_content}\n\n{yalla_separator}\n{yalla_content}\n\n# ==================== قنواتك اليدوية والثابتة ====================\n{static_clean}"
+
+print("\n🔐 جاري تحديث الـ Gist الخاص بك...")
+update_data = {
+    "files": {
+        filename: {
+            "content": final_m3u_content
+        }
     }
-    
-    try:
-        get_gist = session.get(gist_api_url, headers=gist_headers, timeout=15)
-        if get_gist.status_code == 200:
-            filename = list(get_gist.json()['files'].keys())[0]
-            
-            update_payload = {
-                "files": {
-                    filename: {
-                        "content": final_m3u_content
-                    }
-                }
-            }
-            
-            patch_resp = session.patch(gist_api_url, headers=gist_headers, json=update_payload)
-            if patch_resp.status_code == 200:
-                print(f"\n🎉 تم تحديث الـ Gist بنجاح بإجمالي ({total_count}) قناة! الريسيفر جاهز للعمل.")
-            else:
-                print(f"\n❌ فشل تحديث الـ Gist. كود الحالة: {patch_resp.status_code}")
-        else:
-            print(f"\n❌ فشل الوصول إلى Gist API. كود الحالة: {get_gist.status_code}")
-    except Exception as e:
-        print(f"\n❌ خطأ غير متوقع أثناء الاتصال بـ GitHub: {e}")
+}
 
-if __name__ == "__main__":
-    main()
+update_response = requests.patch(gist_api_url, headers=gist_headers, json=update_data)
+
+if update_response.status_code == 200:
+    print("🎉 تم التحديث بنجاح! الروابط أصبحت الآن مباشرة وجاهزة للعمل بالصوت والصورة على كافة أجهزة منزلك ومنزل والدك.")
+else:
+    print(f"❌ فشل تحديث الـ Gist. كود الحالة: {update_response.status_code}")
+
