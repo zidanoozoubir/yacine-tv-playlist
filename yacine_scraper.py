@@ -1,5 +1,4 @@
 import os
-import time
 import requests
 from collections import defaultdict
 from requests.adapters import HTTPAdapter
@@ -9,16 +8,16 @@ from urllib3.util import Retry
 GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
-# 2. إنشاء جلسة اتصال مستقرة مع السيرفرات
+# 2. إنشاء جلسة اتصال مستقرة
 def create_session():
     session = requests.Session()
-    retries = Retry(total=5, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
+    retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retries)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
 
-# 3. قائمة التصفية واستبعاد القنوات الأجنبية غير المرغوبة
+# 3. قائمة استبعاد الدول/القنوات الأجنبية غير المرغوبة
 EXCLUDE_TAGS = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)",
@@ -27,7 +26,7 @@ EXCLUDE_TAGS = [
     "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
 ]
 
-# 4. دالة التصنيف وتوزيع القنوات
+# 4. دالة التصنيف الفوري للقنوات
 def classify_channel(channel_name):
     name_lower = channel_name.lower()
     
@@ -110,54 +109,29 @@ def classify_channel(channel_name):
 
     return None
 
-# 5. دالة محاولة استخراج التوكين بكافة الاحتمالات الذكية
-def get_channel_token_or_stream(session, channel):
-    # الاحتمال 1: البحث المباشر في بيانات القناة المقروءة من الـ JSON
-    for k in ['token', 'sec', 'auth', 'key', 'hash', 'ticket', 'token_url', 'stream_url']:
-        val = channel.get(k)
-        if val and isinstance(val, str) and len(val.strip()) > 5:
-            return val.strip()
+# 5. دالة فحص Firebase للحصول على إعدادات التطبيق الناتجة من قوقل
+def fetch_firebase_config(session):
+    firebase_url = "https://albasha-tv-d5960-default-rtdb.firebaseio.com/.json"
+    print("🔥 جاري فحص إعدادات التحديث المباشرة من Firebase...")
+    try:
+        res = session.get(firebase_url, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            if isinstance(data, dict):
+                print("✔️ تم الاتصال بـ Firebase وقراءة إعدادات التطبيق بنجاح.")
+                return data
+    except Exception as e:
+        print(f"ℹ️ لم يتم جلب إعدادات إضافية من Firebase: {e}")
+    return {}
 
-    # الاحتمال 2: إرسال طلب ثانوي إلى API الباشا لجلب التوكين المخصص للقناة
-    ch_id = channel.get('id') or channel.get('channel_id') or channel.get('cid')
-    raw_url = channel.get('url', '').strip()
-    
-    if ch_id or raw_url:
-        api_url = "https://albashatv.site/api.php"
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "okhttp/3.9.1"
-        }
-        
-        test_payloads = []
-        if ch_id:
-            test_payloads.append(f"method=o6&event=play&id={ch_id}")
-            test_payloads.append(f"method=token&id={ch_id}")
-        if raw_url:
-            test_payloads.append(f"method=o6&event=token&url={raw_url}")
-
-        for payload in test_payloads:
-            try:
-                res = session.post(api_url, headers=headers, data=payload, timeout=3)
-                if res.status_code == 200:
-                    data = res.json()
-                    if isinstance(data, dict):
-                        tok = data.get('token') or data.get('url') or data.get('sec') or data.get('link')
-                        if tok and isinstance(tok, str) and len(tok) > 10:
-                            if "?token=" in tok:
-                                return tok.split("?token=")[-1]
-                            return tok
-            except Exception:
-                pass
-
-    return ""
-
-# 6. جلب وتنقية القنوات وبناء ملف الـ M3U المدمج
+# 6. جلب وتجهيز القنوات مع توجيه السيرفر النشط
 def fetch_al_basha_channels(session):
+    # محاولة فحص الفايربيس أولاً
+    fb_config = fetch_firebase_config(session)
+    
     api_url = "https://albashatv.site/api.php"
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
-        "Connection": "Keep-Alive",
         "User-Agent": "okhttp/3.9.1"
     }
     payload = "method=o6&event=view"
@@ -166,14 +140,14 @@ def fetch_al_basha_channels(session):
     seen_urls = set()
     total_count = 0
 
-    print("📡 جاري الاتصال بتطبيق الباشا وتجربة الاحتمالات الذكية لاستخراج القنوات والتكوكينات...")
+    print("🚀 جاري جلب القنوات وتوجيه الروابط لسيرفر البث النشط...")
     try:
-        response = session.post(api_url, headers=headers, data=payload, timeout=20)
+        response = session.post(api_url, headers=headers, data=payload, timeout=10)
         if response.status_code == 200:
             channels = response.json()
             
             if not isinstance(channels, list):
-                print("⚠️ تنبيه: استجابة السيرفر غير متوافقة.")
+                print("⚠️ استجابة غير متوافقة.")
                 return grouped_channels, 0
 
             for channel in channels:
@@ -192,10 +166,14 @@ def fetch_al_basha_channels(session):
                 cookie = channel.get('cookie', '').strip()
                 logo = channel.get('logo', '').strip()
                 
-                # تطبيق استراتيجيات استخراج التوكين
-                token = get_channel_token_or_stream(session, channel)
+                token = (
+                    channel.get('token', '').strip() or 
+                    channel.get('sec', '').strip() or 
+                    channel.get('auth', '').strip() or 
+                    channel.get('key', '').strip() or 
+                    channel.get('hash', '').strip()
+                )
                 
-                # بناء الترويسات
                 vlc_opts = ["#EXTVLCOPT:http-header=Icy-MetaData: 1"]
                 if basha_ua:
                     vlc_opts.append(f'#EXTVLCOPT:http-user-agent={basha_ua}')
@@ -206,10 +184,10 @@ def fetch_al_basha_channels(session):
                 
                 vlc_opts_str = "\n".join(vlc_opts)
                 
-                # إصلاح وتنظيف الرابط الأساسي
+                # توجيه الرابط للـ IP النشط المستخرج من PCAPdroid بدلاً من السيرفر الأب
                 final_url = raw_url.strip().replace("live///", "live/").replace("live//", "live/")
+                final_url = final_url.replace("185.191.126.127:8080", "217.60.15.177:8080")
                 
-                # إضافة التوكين إن أمكن استخلاصه
                 if token and "?token=" not in final_url:
                     final_url = f"{final_url}?token={token}"
                 
@@ -226,17 +204,17 @@ def fetch_al_basha_channels(session):
         
     return grouped_channels, total_count
 
-# 7. تحديث الـ Gist في GitHub
+# 7. تحديث الـ Gist
 def main():
     if not GIST_ID or not GITHUB_TOKEN:
-        print("❌ خطأ: لم يتم العثور على GIST_ID أو GIST_TOKEN!")
+        print("❌ خطأ: GIST_ID أو GIST_TOKEN غير معرف!")
         return
 
     session = create_session()
     grouped_channels, total_count = fetch_al_basha_channels(session)
     
     if total_count == 0:
-        print("\n🛡️ [درع الحماية]: لم يتم جلب قنوات جديدة، تم حفظ الملف الحالي لحمايته من المسح.")
+        print("🛡️ لم يتم جلب قنوات جديدة، تم حفظ الملف الحالي لحمايته.")
         return
 
     preferred_order = [
@@ -274,7 +252,7 @@ def main():
     }
     
     try:
-        get_gist = session.get(gist_api_url, headers=gist_headers, timeout=15)
+        get_gist = session.get(gist_api_url, headers=gist_headers, timeout=10)
         if get_gist.status_code == 200:
             filename = list(get_gist.json()['files'].keys())[0]
             
@@ -288,13 +266,13 @@ def main():
             
             patch_resp = session.patch(gist_api_url, headers=gist_headers, json=update_payload)
             if patch_resp.status_code == 200:
-                print(f"\n🎉 تم التحديث بنجاح! تم تطبيق كافة الاحتمالات وإصدار الملف النهائي لـ ({total_count}) قناة.")
+                print(f"🎉 تم تحديث الـ Gist بنجاح وتوجيه السيرفرات لـ ({total_count}) قناة!")
             else:
-                print(f"\n❌ فشل تحديث الـ Gist. كود الحالة: {patch_resp.status_code}")
+                print(f"❌ فشل تحديث الـ Gist: {patch_resp.status_code}")
         else:
-            print(f"\n❌ فشل الوصول إلى Gist API: {get_gist.status_code}")
+            print(f"❌ فشل الوصول لـ Gist: {get_gist.status_code}")
     except Exception as e:
-        print(f"\n❌ خطأ: {e}")
+        print(f"❌ خطأ: {e}")
 
 if __name__ == "__main__":
     main()
