@@ -5,20 +5,21 @@ from collections import defaultdict
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-# 1. جلب متغيرات البيئة الخاصة بـ GitHub Gist
+# 1. جلب متغيرات البيئة الآمنة من GitHub Secrets
 GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
-# 2. إنشاء جلسة اتصال مستقرة
+# 2. إنشاء جلسة اتصال ذكية ومقاومة للحظر والانقطاع
 def create_session():
     session = requests.Session()
-    retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+    # إعادة المحاولة تلقائياً 5 مرات عند حدوث بطء أو أخطاء السيرفر (500, 502, 503, 504)
+    retries = Retry(total=5, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retries)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
 
-# 3. قائمة القنوات/الدول غير المرغوبة (استبعاد تام)
+# 3. قائمة التصفية لاستبعاد القنوات/الدول غير المرغوبة
 EXCLUDE_TAGS = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)",
@@ -27,30 +28,33 @@ EXCLUDE_TAGS = [
     "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
 ]
 
-# 4. دالة التصنيف المتقدمة وتوزيع القنوات
+# 4. دالة الفرز والتصنيف الدقيق
 def classify_channel(channel_name):
     name_lower = channel_name.lower()
     
-    # استبعاد القنوات الأجنبية غير المرغوبة
+    # استبعاد الواسمات الأجنبية غير المطلوبة
     if any(tag in name_lower for tag in EXCLUDE_TAGS):
         return None
 
-    # معالجة قنوات beIN وتفكيكها إلى (رياضة عربية - رياضة فرنسية - ترفيه وأفلام)
+    # معالجة قنوات beIN بكل فئاتها
     if "bein" in name_lower:
-        # قنوات beIN الرياضية الفرنسية
+        # beIN Sports الفرنسية
         if any(kw in name_lower for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
             return "BEIN SPORT FR"
             
-        # قنوات beIN الإعلامية والترفيهية (أفلام، مسلسلات، سينما، دراما)
+        # beIN الترفيهية والإعلامية (أفلام، مسلسلات، فتافيت، براعم، جيو...)
         bein_media_keywords = [
-            "movie", "movies", "cinema", "سينما", "drama", "دراما", 
-            "series", "مسلسلات", "gourmet", "box office", "boxoffice", 
-            "pop up", "popup", "media", "entertainment", "junior", "افلام", "أفلام"
+            "movie", "movies", "mov", "cinema", "سينما", "drama", "دراما", 
+            "series", "مسلسلات", "gourmet", "gorment", "fatafeat", "فتافيت",
+            "fox", "life", "action", "bbc", "earth", "star", "world",
+            "baraeam", "baraem", "براعم", "jeem", "جيم", "nat geo", "national", "wild",
+            "box office", "boxoffice", "pop up", "popup", "media", "entertainment", 
+            "junior", "news", "اخبار", "أخبار", "افلام", "أفلام"
         ]
         if any(kw in name_lower for kw in bein_media_keywords):
             return "BEIN MEDIA"
             
-        # المتبقي هو قنوات beIN الرياضية العربية
+        # beIN Sports العربية الرياضية
         return "BEIN SPORT AR"
 
     # قنوات ألوان الرياضية
@@ -85,7 +89,7 @@ def classify_channel(channel_name):
     if any(kw in name_lower for kw in news_keywords):
         return "ARABIC NEWS"
 
-    # قنوات ألوان للأفلام والسينما
+    # قنوات ألوان للأفلام
     if "alwan" in name_lower or "ألوان" in name_lower or "الوان" in name_lower:
         return "ALWAN MOVIES"
 
@@ -126,7 +130,7 @@ def classify_channel(channel_name):
 
     return None
 
-# 5. جلب وتجميع القنوات
+# 5. جلب وتنقية القنوات من API التطبيق مع تنظيف الروابط
 def fetch_al_basha_channels(session):
     api_url = "https://albashatv.site/api.php"
     headers = {
@@ -140,12 +144,16 @@ def fetch_al_basha_channels(session):
     seen_urls = set()
     total_count = 0
 
-    print("🚀 جاري جلب وتجميع القنوات وفرز مجموعة BEIN MEDIA الترفيهية...")
+    print("📡 جاري الاتصال بتطبيق الباشا تيفي وتحديث البث تلقائياً...")
     try:
-        response = session.post(api_url, headers=headers, data=payload, timeout=15)
+        response = session.post(api_url, headers=headers, data=payload, timeout=20)
         if response.status_code == 200:
             channels = response.json()
             
+            if not isinstance(channels, list):
+                print("⚠️ تنبيه: استجابة السيرفر غير متوافقة أو تحت الصيانة.")
+                return grouped_channels, 0
+
             for channel in channels:
                 channel_name = channel.get('name', '').strip()
                 raw_url = channel.get('url', '').strip()
@@ -171,7 +179,9 @@ def fetch_al_basha_channels(session):
                     vlc_opts.append(f'#EXTVLCOPT:http-cookie={cookie}')
                 
                 vlc_opts_str = "\n".join(vlc_opts)
-                final_url = raw_url.replace("live///", "live/").strip()
+                
+                # إصلاح مسارات الروابط والتخلص من التكرار المسبب للأخطاء
+                final_url = raw_url.strip().replace("live///", "live/").replace("live//", "live/")
                 
                 entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n'
                 entry += f'{vlc_opts_str}\n'
@@ -181,31 +191,35 @@ def fetch_al_basha_channels(session):
                 seen_urls.add(raw_url)
                 total_count += 1
                 
-            print(f"🎯 تم الفرز والترتيب بنجاح لأكثر من ({total_count}) قناة.")
     except Exception as e:
-        print(f"❌ خطأ أثناء جلب القنوات: {e}")
+        print(f"❌ خطأ شبكة أثناء الاتصال بالسيرفر: {e}")
         
-    return grouped_channels
+    return grouped_channels, total_count
 
-# 6. تحديث ملف Gist
+# 6. التنفيذ المباشر وحماية الملف من الضياع
 def main():
     if not GIST_ID or not GITHUB_TOKEN:
-        print("❌ خطأ: متغيرات البيئة GIST_ID أو GIST_TOKEN غير معرفة!")
+        print("❌ خطأ: لم يتم العثور على GIST_ID أو GIST_TOKEN في متغيرات البيئة!")
         return
 
     session = create_session()
-    grouped_channels = fetch_al_basha_channels(session)
+    grouped_channels, total_count = fetch_al_basha_channels(session)
     
+    # 🛡️ درع الحماية: إن كان عدد القنوات المجلوبة صفر بسبب الصيانة، نلغي التحديث تماماً
+    if total_count == 0:
+        print("\n🛡️ [درع الحماية]: تم رصد توقف/صيانة في سيرفر الباشا تيفي!")
+        print("🛡️ إلغاء العملية للحفاظ على القنوات القديمة شغالّة على الريسيفر بدون مسح.")
+        return
+
     preferred_order = [
-        "BEIN SPORT AR",   # 1. بي إن سبورتس الرياضية العربية
-        "ALWAN SPORT",     # 2. ألوان الرياضية
-        "AL FAJER",        # 3. قنوات الفجر
-        "BEIN SPORT FR",   # 4. بي إن سبورتس الفرنسية
-        "BEIN MEDIA",      # 5. بي إن الترفيهية للأفلام والمسلسلات (جديد)
-        "KIDS",            # 6. قنوات الأطفال
-        "ALGERIA",         # 7. قنوات الجزائر
-        "ARABIC NEWS",     # 8. الأخبارية العربية
-        # بقية المجموعات:
+        "BEIN SPORT AR",
+        "ALWAN SPORT",
+        "AL FAJER",
+        "BEIN SPORT FR",
+        "BEIN MEDIA",
+        "KIDS",
+        "ALGERIA",
+        "ARABIC NEWS",
         "ALWAN MOVIES",
         "ROTANA",
         "MBC GROUP",
@@ -219,12 +233,16 @@ def main():
     
     m3u_lines = ["#EXTM3U"]
     
+    print("\n📊 إحصائيات القنوات المجلوبة لكل مجموعة:")
     for group in preferred_order:
         if group in grouped_channels and grouped_channels[group]:
+            count = len(grouped_channels[group])
+            print(f"   🔹 {group}: {count} قناة")
             m3u_lines.extend(grouped_channels[group])
             
     final_m3u_content = "\n".join(m3u_lines)
     
+    # تحديث الـ Gist في GitHub
     gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
     gist_headers = {
         "Authorization": f"token {GITHUB_TOKEN}",
@@ -246,13 +264,13 @@ def main():
             
             patch_resp = session.patch(gist_api_url, headers=gist_headers, json=update_payload)
             if patch_resp.status_code == 200:
-                print("🎉 تم التحديث بنجاح! تم التعديل وفصل مجموعة BEIN MEDIA بنجاح.")
+                print(f"\n🎉 تم تحديث الـ Gist بنجاح بإجمالي ({total_count}) قناة! الريسيفر جاهز للعمل.")
             else:
-                print(f"❌ فشل رفع الملف. الكود: {patch_resp.status_code}")
+                print(f"\n❌ فشل تحديث الـ Gist. كود الحالة: {patch_resp.status_code}")
         else:
-            print(f"❌ فشل الاتصال بـ Gist API. الكود: {get_gist.status_code}")
+            print(f"\n❌ فشل الوصول إلى Gist API. كود الحالة: {get_gist.status_code}")
     except Exception as e:
-        print(f"❌ خطأ: {e}")
+        print(f"\n❌ خطأ غير متوقع أثناء الاتصال بـ GitHub: {e}")
 
 if __name__ == "__main__":
     main()
