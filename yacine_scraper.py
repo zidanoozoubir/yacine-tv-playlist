@@ -27,7 +27,7 @@ EXCLUDE_TAGS = [
     "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
 ]
 
-# 4. دالة التصنيف وتعيين المجموعات
+# 4. دالة التصنيف المتقدمة وتوزيع القنوات
 def classify_channel(channel_name):
     name_lower = channel_name.lower()
     
@@ -35,23 +35,33 @@ def classify_channel(channel_name):
     if any(tag in name_lower for tag in EXCLUDE_TAGS):
         return None
 
-    # 1. beIN Sports الفرنسية
-    if "bein" in name_lower and any(kw in name_lower for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
-        return "BEIN SPORT FR"
-
-    # 2. beIN Sports العربية
+    # معالجة قنوات beIN وتفكيكها إلى (رياضة عربية - رياضة فرنسية - ترفيه وأفلام)
     if "bein" in name_lower:
+        # قنوات beIN الرياضية الفرنسية
+        if any(kw in name_lower for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
+            return "BEIN SPORT FR"
+            
+        # قنوات beIN الإعلامية والترفيهية (أفلام، مسلسلات، سينما، دراما)
+        bein_media_keywords = [
+            "movie", "movies", "cinema", "سينما", "drama", "دراما", 
+            "series", "مسلسلات", "gourmet", "box office", "boxoffice", 
+            "pop up", "popup", "media", "entertainment", "junior", "افلام", "أفلام"
+        ]
+        if any(kw in name_lower for kw in bein_media_keywords):
+            return "BEIN MEDIA"
+            
+        # المتبقي هو قنوات beIN الرياضية العربية
         return "BEIN SPORT AR"
 
-    # 3. قنوات ألوان الرياضية
+    # قنوات ألوان الرياضية
     if any(kw in name_lower for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
         return "ALWAN SPORT"
 
-    # 4. قنوات الفجر
+    # قنوات الفجر
     if "fajer" in name_lower or "الفجر" in name_lower:
         return "AL FAJER"
 
-    # 5. قنوات الأطفال
+    # قنوات الأطفال
     kids_keywords = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
         "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
@@ -61,7 +71,7 @@ def classify_channel(channel_name):
     if any(kw in name_lower for kw in kids_keywords):
         return "KIDS"
 
-    # 6. قنوات الجزائر (جديد)
+    # قنوات الجزائر
     algeria_keywords = [
         "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
         "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
@@ -70,45 +80,45 @@ def classify_channel(channel_name):
     if any(kw in name_lower for kw in algeria_keywords):
         return "ALGERIA"
 
-    # 7. القنوات الإخبارية العربية
+    # القنوات الإخبارية العربية
     news_keywords = ["al jazeera", "الجزيرة", "al arabiya", "العربية", "الحدث", "sky news", "سكاي نيوز", "bbc arabic", "فرانس 24", "france 24", "اخبار", "إخبارية", "اخبارية"]
     if any(kw in name_lower for kw in news_keywords):
         return "ARABIC NEWS"
 
-    # 8. قنوات ألوان للأفلام والسينما
+    # قنوات ألوان للأفلام والسينما
     if "alwan" in name_lower or "ألوان" in name_lower or "الوان" in name_lower:
         return "ALWAN MOVIES"
 
-    # 9. قنوات روتانا
+    # قنوات روتانا
     if "rotana" in name_lower or "روتانا" in name_lower:
         return "ROTANA"
 
-    # 10. قنوات MBC
+    # قنوات MBC
     if "mbc" in name_lower or "ام بي سي" in name_lower or "إم بي سي" in name_lower:
         return "MBC GROUP"
 
-    # 11. قنوات بوكس أوفيس
+    # قنوات بوكس أوفيس
     if any(kw in name_lower for kw in ["box office", "boxoffice", "box-office", "بوكس أوفيس", "بوكس اوفيس"]):
         return "BOX OFFICE"
 
-    # 12. قنوات نتفليكس
+    # قنوات نتفليكس
     if "netflix" in name_lower or "نتفليكس" in name_lower or "نتفلكس" in name_lower:
         return "NETFLIX"
 
-    # 13. قنوات أمازون برايم
+    # قنوات أمازون برايم
     if "amazon" in name_lower or "prime" in name_lower or "أمازون" in name_lower or "امازون" in name_lower:
         return "AMAZON PRIME"
 
-    # 14. قنوات HBO
+    # قنوات HBO
     if "hbo" in name_lower:
         return "HBO"
 
-    # 15. قنوات وثائقية
+    # قنوات وثائقية
     doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science"]
     if any(kw in name_lower for kw in doc_keywords):
         return "DOCUMENTARY"
 
-    # 16. القنوات الفرنسية العامة
+    # القنوات الفرنسية العامة
     french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
     french_kw = ["tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", "ocs", "cine", "ciné", "w9", "tmc", "tfx"]
     if any(tag in name_lower for tag in french_tags) or any(kw in name_lower for kw in french_kw):
@@ -116,7 +126,7 @@ def classify_channel(channel_name):
 
     return None
 
-# 5. جلب وتجميع القنوات حسب المجموعات
+# 5. جلب وتجميع القنوات
 def fetch_al_basha_channels(session):
     api_url = "https://albashatv.site/api.php"
     headers = {
@@ -130,7 +140,7 @@ def fetch_al_basha_channels(session):
     seen_urls = set()
     total_count = 0
 
-    print("🚀 جاري جلب القنوات وترتيبها حسب الترتيب الجديد المطلوب...")
+    print("🚀 جاري جلب وتجميع القنوات وفرز مجموعة BEIN MEDIA الترفيهية...")
     try:
         response = session.post(api_url, headers=headers, data=payload, timeout=15)
         if response.status_code == 200:
@@ -171,13 +181,13 @@ def fetch_al_basha_channels(session):
                 seen_urls.add(raw_url)
                 total_count += 1
                 
-            print(f"🎯 تم فرز وتجميع ({total_count}) قناة بنجاح.")
+            print(f"🎯 تم الفرز والترتيب بنجاح لأكثر من ({total_count}) قناة.")
     except Exception as e:
         print(f"❌ خطأ أثناء جلب القنوات: {e}")
         
     return grouped_channels
 
-# 6. تحديث ملف Gist بحسب الترتيب المحدد بدقة
+# 6. تحديث ملف Gist
 def main():
     if not GIST_ID or not GITHUB_TOKEN:
         print("❌ خطأ: متغيرات البيئة GIST_ID أو GIST_TOKEN غير معرفة!")
@@ -186,16 +196,16 @@ def main():
     session = create_session()
     grouped_channels = fetch_al_basha_channels(session)
     
-    # الترتيب الجديد المحدد من قبلك تماماً
     preferred_order = [
         "BEIN SPORT AR",   # 1. بي إن سبورتس الرياضية العربية
         "ALWAN SPORT",     # 2. ألوان الرياضية
         "AL FAJER",        # 3. قنوات الفجر
         "BEIN SPORT FR",   # 4. بي إن سبورتس الفرنسية
-        "KIDS",            # 5. قنوات الأطفال
-        "ALGERIA",         # 6. قنوات الجزائر
-        "ARABIC NEWS",     # 7. الأخبارية العربية
-        # بقية المجموعات الأخرى:
+        "BEIN MEDIA",      # 5. بي إن الترفيهية للأفلام والمسلسلات (جديد)
+        "KIDS",            # 6. قنوات الأطفال
+        "ALGERIA",         # 7. قنوات الجزائر
+        "ARABIC NEWS",     # 8. الأخبارية العربية
+        # بقية المجموعات:
         "ALWAN MOVIES",
         "ROTANA",
         "MBC GROUP",
@@ -236,7 +246,7 @@ def main():
             
             patch_resp = session.patch(gist_api_url, headers=gist_headers, json=update_payload)
             if patch_resp.status_code == 200:
-                print("🎉 تم التحديث بنجاح! الترتيب الجديد مع قنوات الجزائر أصلح جاهزاً على الريسيفر الخاص بك.")
+                print("🎉 تم التحديث بنجاح! تم التعديل وفصل مجموعة BEIN MEDIA بنجاح.")
             else:
                 print(f"❌ فشل رفع الملف. الكود: {patch_resp.status_code}")
         else:
