@@ -27,5 +27,6 @@ jobs:
     - name: Run Scraper and Update Gist
       env:
         GIST_ID: ${{ secrets.GIST_ID }}
+        GIST_ID_NEW: ${{ secrets.GIST_ID_NEW }}
         GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
       run: python yacine_scraper.py
