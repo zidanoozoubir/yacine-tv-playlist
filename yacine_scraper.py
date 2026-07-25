@@ -9,7 +9,7 @@ GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 GIST_ID_1 = os.environ.get("GIST_ID_1") or os.environ.get("GIST_ID")  # الصفحة الأولى (kz.m3u - الباشا)
 GIST_ID_2 = os.environ.get("GIST_ID_2") or os.environ.get("GIST_ID_NEW")  # الصفحة الثانية (s1.m3u - التطبيق الثاني)
 
-# معالجة ذكية لرابط التطبيق الثاني في حال كان السر فارغاً في GitHub
+# معالجة رابط التطبيق الثاني
 env_app2_url = os.environ.get("APP2_M3U_URL")
 if env_app2_url and env_app2_url.strip():
     APP2_M3U_URL = env_app2_url.strip()
@@ -25,7 +25,7 @@ def create_session():
     session.mount('https://', adapter)
     return session
 
-# 3. قائمة التصفية لاستبعاد الدول/القنوات غير المرغوبة
+# 3. قائمة التصفية لاستبعاد الدول/القنوات غير المرغوبة (تطبق فقط على القنوات التي لا تنتمي للمجموعات الـ 21)
 EXCLUDE_TAGS = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)",
@@ -34,32 +34,11 @@ EXCLUDE_TAGS = [
     "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
 ]
 
-# 4. دالة الفرز والتصنيف الدقيق الشاملة والمحدثة لكلتا الصفحتين
+# 4. دالة الفرز والتصنيف الدقيق الشاملة للـ 21 مجموعة بدون استبعاد خاطئ
 def classify_channel(channel_name, raw_group=""):
     combined = f"{channel_name} {raw_group}".lower()
-    
-    # استبعاد الواسمات الأجنبية غير المطلوبة
-    if any(tag in combined for tag in EXCLUDE_TAGS):
-        return None
 
-    # 1. قنوات TOD CHANNEL
-    if "tod" in combined or "تود" in combined:
-        return "TOD CHANNEL"
-
-    # 2. قنوات شوتايم SHOWTIME
-    if any(kw in combined for kw in ["showtime", "show time", "شوتايم", "شو تايم", "show_time", "osn showtime"]):
-        return "SHOWTIME"
-
-    # 3. قنوات هوم سينما HOME CINEMA
-    if any(kw in combined for kw in ["home cinema", "homecinema", "هوم سينما", "هومسينما", "home_cinema", "cinema home"]):
-        return "HOME CINEMA"
-
-    # 4. قنوات MH
-    mh_tags = ["mh:", "mh ", "(mh)", "[mh]", "mh_", "mh-", "mh sports", "mh cinema"]
-    if any(tag in combined for tag in mh_tags) or combined.startswith("mh ") or "mh" in raw_group.lower().split():
-        return "MH"
-
-    # معالجة قنوات beIN بكل فئاتها
+    # --- 1. معالجة قنوات beIN بكل فئاتها ---
     if "bein" in combined:
         if any(kw in combined for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
             return "BEIN SPORT FR"
@@ -77,25 +56,42 @@ def classify_channel(channel_name, raw_group=""):
             
         return "BEIN SPORT AR"
 
-    # قنوات ألوان الرياضية
+    # --- 2. قنوات TOD CHANNEL ---
+    if "tod" in combined or "تود" in combined:
+        return "TOD CHANNEL"
+
+    # --- 3. قنوات ألوان الرياضية ---
     if any(kw in combined for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
         return "ALWAN SPORT"
 
-    # قنوات الفجر
+    # --- 4. قنوات الفجر ---
     if "fajer" in combined or "الفجر" in combined:
         return "AL FAJER"
 
-    # قنوات الأطفال
+    # --- 5. قنوات شوتايم SHOWTIME ---
+    if any(kw in combined for kw in ["showtime", "show time", "شوتايم", "شو تايم", "show_time", "osn showtime"]):
+        return "SHOWTIME"
+
+    # --- 6. قنوات هوم سينما HOME CINEMA ---
+    if any(kw in combined for kw in ["home cinema", "homecinema", "هوم سينما", "هومسينما", "home_cinema", "cinema home"]):
+        return "HOME CINEMA"
+
+    # --- 7. قنوات MH ---
+    mh_tags = ["mh:", "mh ", "(mh)", "[mh]", "mh_", "mh-", "mh sports", "mh cinema"]
+    if any(tag in combined for tag in mh_tags) or combined.startswith("mh ") or "mh" in raw_group.lower().split():
+        return "MH"
+
+    # --- 8. قنوات الأطفال ---
     kids_keywords = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
         "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
         "baraem", "براعم", "cn arabia", "cartoon network", "كرتون نتورك", "jeem", 
-        "تلفزيون جيم", "قناة جيم", "gulli", "tiji", "disney kids", "nickelodeon", "اطفال", "أطفال"
+        "تلفزيون جيم", "قناة جيم", "gulli", "tiji", "disney kids", "nickelodeon", "اطفال", "أطفال", "kids"
     ]
     if any(kw in combined for kw in kids_keywords):
         return "KIDS"
 
-    # قنوات الجزائر
+    # --- 9. قنوات الجزائر ---
     algeria_keywords = [
         "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
         "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
@@ -104,49 +100,53 @@ def classify_channel(channel_name, raw_group=""):
     if any(kw in combined for kw in algeria_keywords):
         return "ALGERIA"
 
-    # القنوات الإخبارية العربية
+    # --- 10. القنوات الإخبارية العربية ---
     news_keywords = ["al jazeera", "الجزيرة", "al arabiya", "العربية", "الحدث", "sky news", "سكاي نيوز", "bbc arabic", "فرانس 24", "france 24", "اخبار", "إخبارية", "اخبارية"]
     if any(kw in combined for kw in news_keywords):
         return "ARABIC NEWS"
 
-    # قنوات ألوان للأفلام
+    # --- 11. قنوات ألوان للأفلام ---
     if "alwan" in combined or "ألوان" in combined or "الوان" in combined:
         return "ALWAN MOVIES"
 
-    # قنوات روتانا
+    # --- 12. قنوات روتانا ---
     if "rotana" in combined or "روتانا" in combined:
         return "ROTANA"
 
-    # قنوات MBC
+    # --- 13. قنوات MBC ---
     if "mbc" in combined or "ام بي سي" in combined or "إم بي سي" in combined:
         return "MBC GROUP"
 
-    # قنوات بوكس أوفيس
+    # --- 14. قنوات بوكس أوفيس ---
     if any(kw in combined for kw in ["box office", "boxoffice", "box-office", "بوكس أوفيس", "بوكس اوفيس"]):
         return "BOX OFFICE"
 
-    # قنوات نتفليكس
+    # --- 15. قنوات نتفليكس ---
     if "netflix" in combined or "نتفليكس" in combined or "نتفلكس" in combined:
         return "NETFLIX"
 
-    # قنوات أمازون برايم
+    # --- 16. قنوات أمازون برايم ---
     if "amazon" in combined or "prime" in combined or "أمازون" in combined or "امازون" in combined:
         return "AMAZON PRIME"
 
-    # قنوات HBO
-    if "hbo" in combined:
+    # --- 17. قنوات HBO ---
+    if "hbo" in combined or "اتش بي او" in combined or "إتش بي أوه" in combined:
         return "HBO"
 
-    # قنوات وثائقية
-    doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science"]
+    # --- 18. قنوات وثائقية ---
+    doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science", "docu"]
     if any(kw in combined for kw in doc_keywords):
         return "DOCUMENTARY"
 
-    # القنوات الفرنسية العامة
-    french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
+    # --- 19. القنوات الفرنسية العامة ---
+    french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france", "french", "fr|"]
     french_kw = ["tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", "ocs", "cine", "ciné", "w9", "tmc", "tfx"]
     if any(tag in combined for tag in french_tags) or any(kw in combined for kw in french_kw):
         return "FRENCH"
+
+    # --- تصفية القنوات الأجنبية غير المطلوبة فقط إذا لم تنتم لأي من المجموعات الـ 21 أعلاه ---
+    if any(tag in combined for tag in EXCLUDE_TAGS):
+        return None
 
     return None
 
