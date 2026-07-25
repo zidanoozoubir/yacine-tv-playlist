@@ -4,29 +4,35 @@ from collections import defaultdict
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-# جلب متغيرات البيئة (التركيز حصرياً على صفحة التطبيق الجديد s1.m3u)
-GIST_ID_NEW = os.environ.get("GIST_ID_NEW") or os.environ.get("GIST_ID")
+# 1. جلب متغيرات البيئة الخاصة بالصفحة الثانية حصراً
+GIST_ID_2 = os.environ.get("GIST_ID_2") or os.environ.get("GIST_ID_NEW")
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
-# إنشاء جلسة اتصال مستقرة
+# رابط مصدر التطبيق الثاني (يُفضل تعيينه كمتغير بيئة APP2_M3U_URL)
+APP2_M3U_URL = os.environ.get(
+    "APP2_M3U_URL",
+    "http://185.191.126.127:8080/get.php?username=b0:99:d7:15:88:50&password=3090914536649669&type=m3u_plus&output=ts"
+)
+
+# 2. إنشاء جلسة اتصال مستقرة
 def create_session():
     session = requests.Session()
-    retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+    retries = Retry(total=5, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retries)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
 
-# قائمة استبعاد الدول/القنوات غير المرغوبة
+# 3. قائمة التصفية لاستبعاد الدول/القنوات غير المرغوبة
 EXCLUDE_TAGS = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)",
     " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ",
     "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]",
-    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
+    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", ".ro)", "(dk)"
 ]
 
-# دالة التصنيف الفوري للقنوات
+# 4. دالة التصنيف والفرز
 def classify_channel(channel_name):
     name_lower = channel_name.lower()
     
@@ -109,68 +115,75 @@ def classify_channel(channel_name):
 
     return None
 
-# جلب وتصنيف قنوات التطبيق الجديد مع محاولات متعددة للمنافذ
-def fetch_new_app_channels(session):
-    urls_to_try = [
-        "http://217.60.15.177:8080/get.php?username=b0:99:d7:15:88:50&password=3090914536649669&type=m3u_plus&output=m3u8",
-        "http://185.191.126.127:8080/get.php?username=b0:99:d7:15:88:50&password=3090914536649669&type=m3u_plus&output=m3u8"
-    ]
-    headers = {"User-Agent": "Mozilla/5.0"}
-    
+# 5. جلب وتنقية القنوات مع التعديلات الحصرية لـ s1.m3u
+def fetch_and_process_app2(session):
     grouped_channels = defaultdict(list)
     total_count = 0
+    seen_urls = set()
 
-    print("🚀 جاري جلب قنوات التطبيق الجديد لصفحة s1.m3u...")
-    for app_url in urls_to_try:
-        try:
-            print(f"📡 جاري الاتصال بالسيرفر: {app_url[:40]}...")
-            response = session.get(app_url, headers=headers, timeout=12)
-            if response.status_code == 200 and "#EXTM3U" in response.text:
-                lines = response.text.splitlines()
-                current_extinf = ""
-                
-                for line in lines:
-                    line_str = line.strip()
-                    if line_str.startswith("#EXTINF:"):
-                        current_extinf = line_str
-                    elif line_str.startswith("http://") or line_str.startswith("https://"):
-                        if current_extinf:
-                            parts = current_extinf.split(",")
-                            channel_name = parts[-1].strip() if len(parts) > 1 else "Channel"
+    # تعديل رابط الطلب ليكون output=ts بدلاً من m3u8 إن أمكن
+    target_url = APP2_M3U_URL.replace("output=m3u8", "output=ts")
+    headers = {"User-Agent": "okhttp/3.9.1"}
+
+    print("🚀 جاري جلب وقنوات التطبيق الثاني وتجهيزها لصفحة s1.m3u...")
+    try:
+        response = session.get(target_url, headers=headers, timeout=20)
+        if response.status_code == 200 and "#EXTM3U" in response.text:
+            lines = response.text.splitlines()
+            current_extinf = ""
+
+            for line in lines:
+                line_str = line.strip()
+                if line_str.startswith("#EXTINF:"):
+                    current_extinf = line_str
+                elif line_str.startswith("http://") or line_str.startswith("https://"):
+                    if current_extinf:
+                        parts = current_extinf.split(",")
+                        channel_name = parts[-1].strip() if len(parts) > 1 else "Channel"
+
+                        group_title = classify_channel(channel_name)
+                        if group_title:
+                            logo = ""
+                            if 'tvg-logo="' in current_extinf:
+                                logo = current_extinf.split('tvg-logo="')[1].split('"')[0]
+
+                            # 🛠️ إصلاح جوهري: تحويل امتداد البث من .m3u8 إلى .ts لمنع التقطيع وخطأ 403
+                            final_url = line_str.replace(".m3u8", ".ts")
                             
-                            group_title = classify_channel(channel_name)
-                            if group_title:
-                                logo = ""
-                                if 'tvg-logo="' in current_extinf:
-                                    logo = current_extinf.split('tvg-logo="')[1].split('"')[0]
-                                    
-                                vlc_opts_str = "#EXTVLCOPT:http-header=Icy-MetaData: 1\n#EXTVLCOPT:http-user-agent=Mozilla/5.0"
-                                final_url = line_str.replace("217.60.15.177:8080", "185.191.126.127:8080")
-                                
-                                entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n{vlc_opts_str}\n{final_url}'
-                                grouped_channels[group_title].append(entry)
-                                total_count += 1
-                            current_extinf = ""
-                
-                if total_count > 0:
-                    print(f"🎯 تم استخراج وتصنيف ({total_count}) قناة بنجاح من التطبيق الجديد.")
-                    break
-        except Exception as e:
-            print(f"⚠️ تجربة الرابط الحالي لم تكتمل: {e}")
-            
+                            # توحيد المنفذ والسيرفر المستقر
+                            final_url = final_url.replace("217.60.15.177:8080", "185.191.126.127:8080")
+
+                            if final_url in seen_urls:
+                                continue
+
+                            # إضافة الترويسات المطلوبة للتشغيل بدون توقف
+                            vlc_opts_str = "#EXTVLCOPT:http-header=Icy-MetaData: 1\n#EXTVLCOPT:http-user-agent=okhttp/3.9.1"
+
+                            entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n{vlc_opts_str}\n{final_url}'
+                            grouped_channels[group_title].append(entry)
+                            seen_urls.add(final_url)
+                            total_count += 1
+                        current_extinf = ""
+
+            print(f"🎯 تم استخراج ومعالجة ({total_count}) قناة بنجاح للتطبيق الثاني.")
+    except Exception as e:
+        print(f"❌ خطأ شبكة أثناء جلب القنوات: {e}")
+
     return grouped_channels, total_count
 
-# التنفيذ وتحديث صفحة s1.m3u حصراً
+# 6. تحديث صفحة GIST_ID_2 فقط
 def main():
-    if not GITHUB_TOKEN:
-        print("❌ خطأ: GIST_TOKEN غير معرف!")
+    if not GIST_ID_2 or not GITHUB_TOKEN:
+        print("❌ خطأ: لم يتم العثور على GIST_ID_2 أو GIST_TOKEN في متغيرات البيئة!")
         return
 
     session = create_session()
-    grouped_channels, total_count = fetch_new_app_channels(session)
-    
+    grouped_channels, total_count = fetch_and_process_app2(session)
+
+    # 🛡️ درع الحماية
     if total_count == 0:
-        print("🛡️ لم يتم استخراج قنوات جديدة، تم الغاء التحديث للحفاظ على الصفحة.")
+        print("\n🛡️ [درع الحماية]: لم يتم استخراج أي قنوات جديدة أو السيرفر غير متوفر حالياً.")
+        print("🛡️ تم إلغاء العملية للحفاظ على الصفحة الحالية بدون مسح.")
         return
 
     preferred_order = [
@@ -179,27 +192,25 @@ def main():
         "ROTANA", "MBC GROUP", "BOX OFFICE", "NETFLIX", "AMAZON PRIME", 
         "HBO", "DOCUMENTARY", "FRENCH"
     ]
-    
+
     m3u_lines = ["#EXTM3U"]
     for group in preferred_order:
         if group in grouped_channels and grouped_channels[group]:
             m3u_lines.extend(grouped_channels[group])
-            
+
     final_m3u_content = "\n".join(m3u_lines)
-    
-    # تحديث صفحة GIST_ID_NEW فقط
-    target_gist_id = GIST_ID_NEW
-    gist_api_url = f"https://api.github.com/gists/{target_gist_id}"
+
+    gist_api_url = f"https://api.github.com/gists/{GIST_ID_2}"
     gist_headers = {
         "Authorization": f"token {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json"
     }
-    
+
     try:
-        get_gist = session.get(gist_api_url, headers=gist_headers, timeout=10)
+        get_gist = session.get(gist_api_url, headers=gist_headers, timeout=15)
         if get_gist.status_code == 200:
             filename = list(get_gist.json()['files'].keys())[0]
-            
+
             update_payload = {
                 "files": {
                     filename: {
@@ -207,16 +218,16 @@ def main():
                     }
                 }
             }
-            
+
             patch_resp = session.patch(gist_api_url, headers=gist_headers, json=update_payload)
             if patch_resp.status_code == 200:
-                print(f"🎉 تم تحديث صفحة s1.m3u ({filename}) بنجاح لـ ({total_count}) قناة!")
+                print(f"\n🎉 تم تحديث صفحة s1.m3u ({filename}) بنجاح بإجمالي ({total_count}) قناة بصيغة .ts وبدون تقطيع!")
             else:
-                print(f"❌ فشل تحديث الـ Gist: {patch_resp.status_code}")
+                print(f"\n❌ فشل تحديث الـ Gist. كود الحالة: {patch_resp.status_code}")
         else:
-            print(f"❌ فشل الوصول لـ Gist: {get_gist.status_code}")
+            print(f"\n❌ فشل الوصول إلى Gist API. كود الحالة: {get_gist.status_code}")
     except Exception as e:
-        print(f"❌ خطأ: {e}")
+        print(f"\n❌ خطأ غير متوقع أثناء الاتصال بـ GitHub: {e}")
 
 if __name__ == "__main__":
     main()
