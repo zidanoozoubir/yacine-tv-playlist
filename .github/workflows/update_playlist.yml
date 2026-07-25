@@ -28,7 +28,5 @@ jobs:
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           GIST_ID: ${{ secrets.GIST_ID }}
-          GIST_ID_2: ${{ secrets.GIST_ID_2 }}
           GIST_ID_NEW: ${{ secrets.GIST_ID_NEW }}
-          APP2_M3U_URL: ${{ secrets.APP2_M3U_URL }}
         run: python yacine_scraper.py
