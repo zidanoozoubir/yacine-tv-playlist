@@ -4,7 +4,7 @@ on:
   schedule:
     # تشغيل تلقائي كل 30 دقيقة
     - cron: '*/30 * * * *'
-  workflow_dispatch:  # 👈 تم ضبط المسافة لتكون مساوية لـ schedule تماماً
+  workflow_dispatch:
 
 jobs:
   build:
@@ -26,7 +26,9 @@ jobs:
 
       - name: Run Scraper and Update Gist
         env:
-          GIST_ID: ${{ secrets.GIST_ID }}
-          GIST_ID_NEW: ${{ secrets.GIST_ID_NEW }}
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_ID_2: ${{ secrets.GIST_ID_2 }}
+          GIST_ID_NEW: ${{ secrets.GIST_ID_NEW }}
+          APP2_M3U_URL: ${{ secrets.APP2_M3U_URL }}
         run: python yacine_scraper.py
