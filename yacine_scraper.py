@@ -25,7 +25,7 @@ def create_session():
     session.mount('https://', adapter)
     return session
 
-# 3. قائمة التصفية لاستبعاد الدول/القنوات غير المرغوبة (تطبق فقط على القنوات التي لا تنتمي للمجموعات الـ 21)
+# 3. قائمة التصفية لاستبعاد الدول/القنوات غير المرغوبة (تطبق فقط على القنوات المتبقية)
 EXCLUDE_TAGS = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)",
@@ -34,9 +34,9 @@ EXCLUDE_TAGS = [
     "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
 ]
 
-# 4. دالة الفرز والتصنيف الدقيق الشاملة للـ 21 مجموعة بدون استبعاد خاطئ
-def classify_channel(channel_name, raw_group=""):
-    combined = f"{channel_name} {raw_group}".lower()
+# 4. دالة الفرز والتصنيف الدقيق الشاملة للـ 21 مجموعة عبر فحص سطر الوصف الكامل
+def classify_channel(channel_name, extinf_line=""):
+    combined = f"{channel_name} {extinf_line}".lower()
 
     # --- 1. معالجة قنوات beIN بكل فئاتها ---
     if "bein" in combined:
@@ -77,8 +77,8 @@ def classify_channel(channel_name, raw_group=""):
         return "HOME CINEMA"
 
     # --- 7. قنوات MH ---
-    mh_tags = ["mh:", "mh ", "(mh)", "[mh]", "mh_", "mh-", "mh sports", "mh cinema"]
-    if any(tag in combined for tag in mh_tags) or combined.startswith("mh ") or "mh" in raw_group.lower().split():
+    mh_tags = ["mh:", "mh ", "(mh)", "[mh]", "mh_", "mh-", "mh sports", "mh cinema", "mh tv"]
+    if any(tag in combined for tag in mh_tags) or combined.startswith("mh "):
         return "MH"
 
     # --- 8. قنوات الأطفال ---
@@ -86,7 +86,7 @@ def classify_channel(channel_name, raw_group=""):
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
         "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
         "baraem", "براعم", "cn arabia", "cartoon network", "كرتون نتورك", "jeem", 
-        "تلفزيون جيم", "قناة جيم", "gulli", "tiji", "disney kids", "nickelodeon", "اطفال", "أطفال", "kids"
+        "تلفزيون جيم", "قناة جيم", "gulli", "tiji", "disney kids", "nickelodeon", "اطفال", "أطفال", "kids", "طفل"
     ]
     if any(kw in combined for kw in kids_keywords):
         return "KIDS"
@@ -95,13 +95,14 @@ def classify_channel(channel_name, raw_group=""):
     algeria_keywords = [
         "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
         "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
-        "ennahar", "samira", "سميرة", "numidia", "نوميديا", "الوطنية", "el watania", "al24"
+        "ennahar", "samira", "سميرة", "numidia", "نوميديا", "الوطنية", "el watania", "al24",
+        "dz:", "dz|", "dz ", "[dz]", "(dz)", "alg:", "alg|", "alg "
     ]
     if any(kw in combined for kw in algeria_keywords):
         return "ALGERIA"
 
     # --- 10. القنوات الإخبارية العربية ---
-    news_keywords = ["al jazeera", "الجزيرة", "al arabiya", "العربية", "الحدث", "sky news", "سكاي نيوز", "bbc arabic", "فرانس 24", "france 24", "اخبار", "إخبارية", "اخبارية"]
+    news_keywords = ["al jazeera", "الجزيرة", "al arabiya", "العربية", "الحدث", "sky news", "سكاي نيوز", "bbc arabic", "فرانس 24", "france 24", "اخبار", "إخبارية", "اخبارية", "news", "الخبر"]
     if any(kw in combined for kw in news_keywords):
         return "ARABIC NEWS"
 
@@ -134,17 +135,17 @@ def classify_channel(channel_name, raw_group=""):
         return "HBO"
 
     # --- 18. قنوات وثائقية ---
-    doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science", "docu"]
+    doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science", "docu", "doc", "وثائقي"]
     if any(kw in combined for kw in doc_keywords):
         return "DOCUMENTARY"
 
     # --- 19. القنوات الفرنسية العامة ---
-    french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france", "french", "fr|"]
+    french_tags = ["fr:", "fr ", "(fr)", "[fr]", "fr|", "fr-", "france", "french"]
     french_kw = ["tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", "ocs", "cine", "ciné", "w9", "tmc", "tfx"]
     if any(tag in combined for tag in french_tags) or any(kw in combined for kw in french_kw):
         return "FRENCH"
 
-    # --- تصفية القنوات الأجنبية غير المطلوبة فقط إذا لم تنتم لأي من المجموعات الـ 21 أعلاه ---
+    # --- تصفية القنوات الأجنبية غير المطلوبة فقط إذا لم تنتم لأي مجموعة من الـ 21 أعلاه ---
     if any(tag in combined for tag in EXCLUDE_TAGS):
         return None
 
@@ -241,11 +242,8 @@ def fetch_app2_channels(session):
                         parts = current_extinf.split(",")
                         channel_name = parts[-1].strip() if len(parts) > 1 else "Channel"
 
-                        raw_group = ""
-                        if 'group-title="' in current_extinf:
-                            raw_group = current_extinf.split('group-title="')[1].split('"')[0]
-
-                        group_title = classify_channel(channel_name, raw_group)
+                        # إرسال سطر الوصف المكتمل لمطابقته مع المجموعات الـ 21
+                        group_title = classify_channel(channel_name, current_extinf)
                         if group_title:
                             logo = ""
                             if 'tvg-logo="' in current_extinf:
