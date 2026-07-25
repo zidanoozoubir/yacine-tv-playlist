@@ -2,8 +2,8 @@ name: Update IPTV Playlist
 
 on:
   schedule:
-    # تشغيل تلقائي كل 30 دقيقة
-    - cron: '*/30 * * * *'
+    # تشغيل تلقائي كل 6 ساعات (ممتاز ومريح)
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
