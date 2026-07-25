@@ -104,6 +104,17 @@ def classify_channel(channel_name):
     if "hbo" in name_lower:
         return "HBO"
 
+    # --- المجموعات المضافة حديثاً ---
+    if any(kw in name_lower for kw in ["showtime", "شوتايم"]):
+        return "SHOWTIME"
+
+    if any(kw in name_lower for kw in ["home cinema", "homecinema", "هوم سينما", "هومسينما"]):
+        return "HOME CINEMA"
+
+    if any(kw in name_lower for kw in ["mh", "ام اتش", "أم اتش"]):
+        return "MH GROUP"
+    # --------------------------------
+
     doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science"]
     if any(kw in name_lower for kw in doc_keywords):
         return "DOCUMENTARY"
@@ -190,7 +201,7 @@ def main():
         "BEIN SPORT AR", "ALWAN SPORT", "AL FAJER", "BEIN SPORT FR", 
         "BEIN MEDIA", "KIDS", "ALGERIA", "ARABIC NEWS", "ALWAN MOVIES", 
         "ROTANA", "MBC GROUP", "BOX OFFICE", "NETFLIX", "AMAZON PRIME", 
-        "HBO", "DOCUMENTARY", "FRENCH"
+        "HBO", "SHOWTIME", "HOME CINEMA", "MH GROUP", "DOCUMENTARY", "FRENCH"
     ]
 
     m3u_lines = ["#EXTM3U"]
