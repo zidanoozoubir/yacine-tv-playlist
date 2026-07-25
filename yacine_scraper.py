@@ -1,23 +1,26 @@
+
 import os
+import time
 import requests
 from collections import defaultdict
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-# جلب متغيرات البيئة (التركيز حصرياً على صفحة التطبيق الجديد s1.m3u)
-GIST_ID_NEW = os.environ.get("GIST_ID_NEW") or os.environ.get("GIST_ID")
+# 1. جلب متغيرات البيئة الآمنة من GitHub Secrets
+GIST_ID = os.environ.get("GIST_ID")
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
-# إنشاء جلسة اتصال مستقرة
+# 2. إنشاء جلسة اتصال ذكية ومقاومة للحظر والانقطاع
 def create_session():
     session = requests.Session()
-    retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+    # إعادة المحاولة تلقائياً 5 مرات عند حدوث بطء أو أخطاء السيرفر (500, 502, 503, 504)
+    retries = Retry(total=5, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retries)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
 
-# قائمة استبعاد الدول/القنوات غير المرغوبة
+# 3. قائمة التصفية لاستبعاد القنوات/الدول غير المرغوبة
 EXCLUDE_TAGS = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)",
@@ -26,17 +29,21 @@ EXCLUDE_TAGS = [
     "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)"
 ]
 
-# دالة التصنيف الفوري للقنوات
+# 4. دالة الفرز والتصنيف الدقيق
 def classify_channel(channel_name):
     name_lower = channel_name.lower()
     
+    # استبعاد الواسمات الأجنبية غير المطلوبة
     if any(tag in name_lower for tag in EXCLUDE_TAGS):
         return None
 
+    # معالجة قنوات beIN بكل فئاتها
     if "bein" in name_lower:
+        # beIN Sports الفرنسية
         if any(kw in name_lower for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
             return "BEIN SPORT FR"
             
+        # beIN الترفيهية والإعلامية (أفلام، مسلسلات، فتافيت، براعم، جيو...)
         bein_media_keywords = [
             "movie", "movies", "mov", "cinema", "سينما", "drama", "دراما", 
             "series", "مسلسلات", "gourmet", "gorment", "fatafeat", "فتافيت",
@@ -48,14 +55,18 @@ def classify_channel(channel_name):
         if any(kw in name_lower for kw in bein_media_keywords):
             return "BEIN MEDIA"
             
+        # beIN Sports العربية الرياضية
         return "BEIN SPORT AR"
 
+    # قنوات ألوان الرياضية
     if any(kw in name_lower for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
         return "ALWAN SPORT"
 
+    # قنوات الفجر
     if "fajer" in name_lower or "الفجر" in name_lower:
         return "AL FAJER"
 
+    # قنوات الأطفال
     kids_keywords = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
         "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
@@ -65,6 +76,7 @@ def classify_channel(channel_name):
     if any(kw in name_lower for kw in kids_keywords):
         return "KIDS"
 
+    # قنوات الجزائر
     algeria_keywords = [
         "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
         "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
@@ -73,35 +85,45 @@ def classify_channel(channel_name):
     if any(kw in name_lower for kw in algeria_keywords):
         return "ALGERIA"
 
+    # القنوات الإخبارية العربية
     news_keywords = ["al jazeera", "الجزيرة", "al arabiya", "العربية", "الحدث", "sky news", "سكاي نيوز", "bbc arabic", "فرانس 24", "france 24", "اخبار", "إخبارية", "اخبارية"]
     if any(kw in name_lower for kw in news_keywords):
         return "ARABIC NEWS"
 
+    # قنوات ألوان للأفلام
     if "alwan" in name_lower or "ألوان" in name_lower or "الوان" in name_lower:
         return "ALWAN MOVIES"
 
+    # قنوات روتانا
     if "rotana" in name_lower or "روتانا" in name_lower:
         return "ROTANA"
 
+    # قنوات MBC
     if "mbc" in name_lower or "ام بي سي" in name_lower or "إم بي سي" in name_lower:
         return "MBC GROUP"
 
+    # قنوات بوكس أوفيس
     if any(kw in name_lower for kw in ["box office", "boxoffice", "box-office", "بوكس أوفيس", "بوكس اوفيس"]):
         return "BOX OFFICE"
 
+    # قنوات نتفليكس
     if "netflix" in name_lower or "نتفليكس" in name_lower or "نتفلكس" in name_lower:
         return "NETFLIX"
 
+    # قنوات أمازون برايم
     if "amazon" in name_lower or "prime" in name_lower or "أمازون" in name_lower or "امازون" in name_lower:
         return "AMAZON PRIME"
 
+    # قنوات HBO
     if "hbo" in name_lower:
         return "HBO"
 
+    # قنوات وثائقية
     doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science"]
     if any(kw in name_lower for kw in doc_keywords):
         return "DOCUMENTARY"
 
+    # القنوات الفرنسية العامة
     french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
     french_kw = ["tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", "ocs", "cine", "ciné", "w9", "tmc", "tfx"]
     if any(tag in name_lower for tag in french_tags) or any(kw in name_lower for kw in french_kw):
@@ -109,94 +131,127 @@ def classify_channel(channel_name):
 
     return None
 
-# جلب وتصنيف قنوات التطبيق الجديد مع محاولات متعددة للمنافذ
-def fetch_new_app_channels(session):
-    urls_to_try = [
-        "http://217.60.15.177:8080/get.php?username=b0:99:d7:15:88:50&password=3090914536649669&type=m3u_plus&output=m3u8",
-        "http://185.191.126.127:8080/get.php?username=b0:99:d7:15:88:50&password=3090914536649669&type=m3u_plus&output=m3u8"
-    ]
-    headers = {"User-Agent": "Mozilla/5.0"}
+# 5. جلب وتنقية القنوات من API التطبيق مع تنظيف الروابط
+def fetch_al_basha_channels(session):
+    api_url = "https://albashatv.site/api.php"
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Connection": "Keep-Alive",
+        "User-Agent": "okhttp/3.9.1"
+    }
+    payload = "method=o6&event=view"
     
     grouped_channels = defaultdict(list)
+    seen_urls = set()
     total_count = 0
 
-    print("🚀 جاري جلب قنوات التطبيق الجديد لصفحة s1.m3u...")
-    for app_url in urls_to_try:
-        try:
-            print(f"📡 جاري الاتصال بالسيرفر: {app_url[:40]}...")
-            response = session.get(app_url, headers=headers, timeout=12)
-            if response.status_code == 200 and "#EXTM3U" in response.text:
-                lines = response.text.splitlines()
-                current_extinf = ""
-                
-                for line in lines:
-                    line_str = line.strip()
-                    if line_str.startswith("#EXTINF:"):
-                        current_extinf = line_str
-                    elif line_str.startswith("http://") or line_str.startswith("https://"):
-                        if current_extinf:
-                            parts = current_extinf.split(",")
-                            channel_name = parts[-1].strip() if len(parts) > 1 else "Channel"
-                            
-                            group_title = classify_channel(channel_name)
-                            if group_title:
-                                logo = ""
-                                if 'tvg-logo="' in current_extinf:
-                                    logo = current_extinf.split('tvg-logo="')[1].split('"')[0]
-                                    
-                                vlc_opts_str = "#EXTVLCOPT:http-header=Icy-MetaData: 1\n#EXTVLCOPT:http-user-agent=Mozilla/5.0"
-                                final_url = line_str.replace("217.60.15.177:8080", "185.191.126.127:8080")
-                                
-                                entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n{vlc_opts_str}\n{final_url}'
-                                grouped_channels[group_title].append(entry)
-                                total_count += 1
-                            current_extinf = ""
-                
-                if total_count > 0:
-                    print(f"🎯 تم استخراج وتصنيف ({total_count}) قناة بنجاح من التطبيق الجديد.")
-                    break
-        except Exception as e:
-            print(f"⚠️ تجربة الرابط الحالي لم تكتمل: {e}")
+    print("📡 جاري الاتصال بتطبيق الباشا تيفي وتحديث البث تلقائياً...")
+    try:
+        response = session.post(api_url, headers=headers, data=payload, timeout=20)
+        if response.status_code == 200:
+            channels = response.json()
             
+            if not isinstance(channels, list):
+                print("⚠️ تنبيه: استجابة السيرفر غير متوافقة أو تحت الصيانة.")
+                return grouped_channels, 0
+
+            for channel in channels:
+                channel_name = channel.get('name', '').strip()
+                raw_url = channel.get('url', '').strip()
+                
+                if not raw_url or raw_url in seen_urls:
+                    continue
+                
+                group_title = classify_channel(channel_name)
+                if not group_title:
+                    continue
+                
+                basha_ua = channel.get('user_agent', '').strip()
+                referer = channel.get('refrens', '').strip()
+                cookie = channel.get('cookie', '').strip()
+                logo = channel.get('logo', '').strip()
+                
+                vlc_opts = ["#EXTVLCOPT:http-header=Icy-MetaData: 1"]
+                if basha_ua:
+                    vlc_opts.append(f'#EXTVLCOPT:http-user-agent={basha_ua}')
+                if referer:
+                    vlc_opts.append(f'#EXTVLCOPT:http-referrer={referer}')
+                if cookie:
+                    vlc_opts.append(f'#EXTVLCOPT:http-cookie={cookie}')
+                
+                vlc_opts_str = "\n".join(vlc_opts)
+                
+                # إصلاح مسارات الروابط والتخلص من التكرار المسبب للأخطاء
+                final_url = raw_url.strip().replace("live///", "live/").replace("live//", "live/")
+                
+                entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n'
+                entry += f'{vlc_opts_str}\n'
+                entry += f'{final_url}'
+                
+                grouped_channels[group_title].append(entry)
+                seen_urls.add(raw_url)
+                total_count += 1
+                
+    except Exception as e:
+        print(f"❌ خطأ شبكة أثناء الاتصال بالسيرفر: {e}")
+        
     return grouped_channels, total_count
 
-# التنفيذ وتحديث صفحة s1.m3u حصراً
+# 6. التنفيذ المباشر وحماية الملف من الضياع
 def main():
-    if not GITHUB_TOKEN:
-        print("❌ خطأ: GIST_TOKEN غير معرف!")
+    if not GIST_ID or not GITHUB_TOKEN:
+        print("❌ خطأ: لم يتم العثور على GIST_ID أو GIST_TOKEN في متغيرات البيئة!")
         return
 
     session = create_session()
-    grouped_channels, total_count = fetch_new_app_channels(session)
+    grouped_channels, total_count = fetch_al_basha_channels(session)
     
+    # 🛡️ درع الحماية: إن كان عدد القنوات المجلوبة صفر بسبب الصيانة، نلغي التحديث تماماً
     if total_count == 0:
-        print("🛡️ لم يتم استخراج قنوات جديدة، تم الغاء التحديث للحفاظ على الصفحة.")
+        print("\n🛡️ [درع الحماية]: تم رصد توقف/صيانة في سيرفر الباشا تيفي!")
+        print("🛡️ إلغاء العملية للحفاظ على القنوات القديمة شغالّة على الريسيفر بدون مسح.")
         return
 
     preferred_order = [
-        "BEIN SPORT AR", "ALWAN SPORT", "AL FAJER", "BEIN SPORT FR", 
-        "BEIN MEDIA", "KIDS", "ALGERIA", "ARABIC NEWS", "ALWAN MOVIES", 
-        "ROTANA", "MBC GROUP", "BOX OFFICE", "NETFLIX", "AMAZON PRIME", 
-        "HBO", "DOCUMENTARY", "FRENCH"
+        "BEIN SPORT AR",
+        "ALWAN SPORT",
+        "AL FAJER",
+        "BEIN SPORT FR",
+        "BEIN MEDIA",
+        "KIDS",
+        "ALGERIA",
+        "ARABIC NEWS",
+        "ALWAN MOVIES",
+        "ROTANA",
+        "MBC GROUP",
+        "BOX OFFICE",
+        "NETFLIX",
+        "AMAZON PRIME",
+        "HBO",
+        "DOCUMENTARY",
+        "FRENCH"
     ]
     
     m3u_lines = ["#EXTM3U"]
+    
+    print("\n📊 إحصائيات القنوات المجلوبة لكل مجموعة:")
     for group in preferred_order:
         if group in grouped_channels and grouped_channels[group]:
+            count = len(grouped_channels[group])
+            print(f"   🔹 {group}: {count} قناة")
             m3u_lines.extend(grouped_channels[group])
             
     final_m3u_content = "\n".join(m3u_lines)
     
-    # تحديث صفحة GIST_ID_NEW فقط
-    target_gist_id = GIST_ID_NEW
-    gist_api_url = f"https://api.github.com/gists/{target_gist_id}"
+    # تحديث الـ Gist في GitHub
+    gist_api_url = f"https://api.github.com/gists/{GIST_ID}"
     gist_headers = {
         "Authorization": f"token {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json"
     }
     
     try:
-        get_gist = session.get(gist_api_url, headers=gist_headers, timeout=10)
+        get_gist = session.get(gist_api_url, headers=gist_headers, timeout=15)
         if get_gist.status_code == 200:
             filename = list(get_gist.json()['files'].keys())[0]
             
@@ -210,13 +265,13 @@ def main():
             
             patch_resp = session.patch(gist_api_url, headers=gist_headers, json=update_payload)
             if patch_resp.status_code == 200:
-                print(f"🎉 تم تحديث صفحة s1.m3u ({filename}) بنجاح لـ ({total_count}) قناة!")
+                print(f"\n🎉 تم تحديث الـ Gist بنجاح بإجمالي ({total_count}) قناة! الريسيفر جاهز للعمل.")
             else:
-                print(f"❌ فشل تحديث الـ Gist: {patch_resp.status_code}")
+                print(f"\n❌ فشل تحديث الـ Gist. كود الحالة: {patch_resp.status_code}")
         else:
-            print(f"❌ فشل الوصول لـ Gist: {get_gist.status_code}")
+            print(f"\n❌ فشل الوصول إلى Gist API. كود الحالة: {get_gist.status_code}")
     except Exception as e:
-        print(f"❌ خطأ: {e}")
+        print(f"\n❌ خطأ غير متوقع أثناء الاتصال بـ GitHub: {e}")
 
 if __name__ == "__main__":
     main()
