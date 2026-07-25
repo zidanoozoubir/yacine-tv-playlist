@@ -9,11 +9,12 @@ GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 GIST_ID_1 = os.environ.get("GIST_ID_1") or os.environ.get("GIST_ID")  # الصفحة الأولى (kz.m3u - الباشا)
 GIST_ID_2 = os.environ.get("GIST_ID_2") or os.environ.get("GIST_ID_NEW")  # الصفحة الثانية (s1.m3u - التطبيق الثاني)
 
-# رابط مصدر التطبيق الثاني (تلقائي أو مخصص عبر secrets)
-APP2_M3U_URL = os.environ.get(
-    "APP2_M3U_URL",
-    "http://185.191.126.127:8080/get.php?username=b0:99:d7:15:88:50&password=3090914536649669&type=m3u_plus&output=ts"
-)
+# معالجة ذكية لرابط التطبيق الثاني في حال كان السر فارغاً في GitHub
+env_app2_url = os.environ.get("APP2_M3U_URL")
+if env_app2_url and env_app2_url.strip():
+    APP2_M3U_URL = env_app2_url.strip()
+else:
+    APP2_M3U_URL = "http://185.191.126.127:8080/get.php?username=b0:99:d7:15:88:50&password=3090914536649669&type=m3u_plus&output=ts"
 
 # 2. إنشاء جلسة اتصال مستقرة ومقاومة للانقطاع والحظر
 def create_session():
@@ -34,33 +35,33 @@ EXCLUDE_TAGS = [
 ]
 
 # 4. دالة الفرز والتصنيف الدقيق الشاملة والمحدثة لكلتا الصفحتين
-def classify_channel(channel_name):
-    name_lower = channel_name.lower()
+def classify_channel(channel_name, raw_group=""):
+    combined = f"{channel_name} {raw_group}".lower()
     
     # استبعاد الواسمات الأجنبية غير المطلوبة
-    if any(tag in name_lower for tag in EXCLUDE_TAGS):
+    if any(tag in combined for tag in EXCLUDE_TAGS):
         return None
 
     # 1. قنوات TOD CHANNEL
-    if "tod" in name_lower:
+    if "tod" in combined or "تود" in combined:
         return "TOD CHANNEL"
 
     # 2. قنوات شوتايم SHOWTIME
-    if any(kw in name_lower for kw in ["showtime", "show time", "شوتايم", "شو تايم"]):
+    if any(kw in combined for kw in ["showtime", "show time", "شوتايم", "شو تايم", "show_time", "osn showtime"]):
         return "SHOWTIME"
 
     # 3. قنوات هوم سينما HOME CINEMA
-    if any(kw in name_lower for kw in ["home cinema", "homecinema", "هوم سينما", "هومسينما", "home_cinema"]):
+    if any(kw in combined for kw in ["home cinema", "homecinema", "هوم سينما", "هومسينما", "home_cinema", "cinema home"]):
         return "HOME CINEMA"
 
     # 4. قنوات MH
-    mh_tags = ["mh:", "mh ", "(mh)", "[mh]", "mh_", "mh-"]
-    if any(tag in name_lower for tag in mh_tags) or name_lower.startswith("mh ") or name_lower == "mh":
+    mh_tags = ["mh:", "mh ", "(mh)", "[mh]", "mh_", "mh-", "mh sports", "mh cinema"]
+    if any(tag in combined for tag in mh_tags) or combined.startswith("mh ") or "mh" in raw_group.lower().split():
         return "MH"
 
     # معالجة قنوات beIN بكل فئاتها
-    if "bein" in name_lower:
-        if any(kw in name_lower for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
+    if "bein" in combined:
+        if any(kw in combined for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
             return "BEIN SPORT FR"
             
         bein_media_keywords = [
@@ -71,17 +72,17 @@ def classify_channel(channel_name):
             "box office", "boxoffice", "pop up", "popup", "media", "entertainment", 
             "junior", "news", "اخبار", "أخبار", "افلام", "أفلام"
         ]
-        if any(kw in name_lower for kw in bein_media_keywords):
+        if any(kw in combined for kw in bein_media_keywords):
             return "BEIN MEDIA"
             
         return "BEIN SPORT AR"
 
     # قنوات ألوان الرياضية
-    if any(kw in name_lower for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
+    if any(kw in combined for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
         return "ALWAN SPORT"
 
     # قنوات الفجر
-    if "fajer" in name_lower or "الفجر" in name_lower:
+    if "fajer" in combined or "الفجر" in combined:
         return "AL FAJER"
 
     # قنوات الأطفال
@@ -91,7 +92,7 @@ def classify_channel(channel_name):
         "baraem", "براعم", "cn arabia", "cartoon network", "كرتون نتورك", "jeem", 
         "تلفزيون جيم", "قناة جيم", "gulli", "tiji", "disney kids", "nickelodeon", "اطفال", "أطفال"
     ]
-    if any(kw in name_lower for kw in kids_keywords):
+    if any(kw in combined for kw in kids_keywords):
         return "KIDS"
 
     # قنوات الجزائر
@@ -100,51 +101,51 @@ def classify_channel(channel_name):
         "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
         "ennahar", "samira", "سميرة", "numidia", "نوميديا", "الوطنية", "el watania", "al24"
     ]
-    if any(kw in name_lower for kw in algeria_keywords):
+    if any(kw in combined for kw in algeria_keywords):
         return "ALGERIA"
 
     # القنوات الإخبارية العربية
     news_keywords = ["al jazeera", "الجزيرة", "al arabiya", "العربية", "الحدث", "sky news", "سكاي نيوز", "bbc arabic", "فرانس 24", "france 24", "اخبار", "إخبارية", "اخبارية"]
-    if any(kw in name_lower for kw in news_keywords):
+    if any(kw in combined for kw in news_keywords):
         return "ARABIC NEWS"
 
     # قنوات ألوان للأفلام
-    if "alwan" in name_lower or "ألوان" in name_lower or "الوان" in name_lower:
+    if "alwan" in combined or "ألوان" in combined or "الوان" in combined:
         return "ALWAN MOVIES"
 
     # قنوات روتانا
-    if "rotana" in name_lower or "روتانا" in name_lower:
+    if "rotana" in combined or "روتانا" in combined:
         return "ROTANA"
 
     # قنوات MBC
-    if "mbc" in name_lower or "ام بي سي" in name_lower or "إم بي سي" in name_lower:
+    if "mbc" in combined or "ام بي سي" in combined or "إم بي سي" in combined:
         return "MBC GROUP"
 
     # قنوات بوكس أوفيس
-    if any(kw in name_lower for kw in ["box office", "boxoffice", "box-office", "بوكس أوفيس", "بوكس اوفيس"]):
+    if any(kw in combined for kw in ["box office", "boxoffice", "box-office", "بوكس أوفيس", "بوكس اوفيس"]):
         return "BOX OFFICE"
 
     # قنوات نتفليكس
-    if "netflix" in name_lower or "نتفليكس" in name_lower or "نتفلكس" in name_lower:
+    if "netflix" in combined or "نتفليكس" in combined or "نتفلكس" in combined:
         return "NETFLIX"
 
     # قنوات أمازون برايم
-    if "amazon" in name_lower or "prime" in name_lower or "أمازون" in name_lower or "امازون" in name_lower:
+    if "amazon" in combined or "prime" in combined or "أمازون" in combined or "امازون" in combined:
         return "AMAZON PRIME"
 
     # قنوات HBO
-    if "hbo" in name_lower:
+    if "hbo" in combined:
         return "HBO"
 
     # قنوات وثائقية
     doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science"]
-    if any(kw in name_lower for kw in doc_keywords):
+    if any(kw in combined for kw in doc_keywords):
         return "DOCUMENTARY"
 
     # القنوات الفرنسية العامة
     french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
     french_kw = ["tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", "ocs", "cine", "ciné", "w9", "tmc", "tfx"]
-    if any(tag in name_lower for tag in french_tags) or any(kw in name_lower for kw in french_kw):
+    if any(tag in combined for tag in french_tags) or any(kw in combined for kw in french_kw):
         return "FRENCH"
 
     return None
@@ -175,11 +176,12 @@ def fetch_app1_channels(session):
             for channel in channels:
                 channel_name = channel.get('name', '').strip()
                 raw_url = channel.get('url', '').strip()
+                raw_group = channel.get('category', channel.get('group', ''))
                 
                 if not raw_url or raw_url in seen_urls:
                     continue
                 
-                group_title = classify_channel(channel_name)
+                group_title = classify_channel(channel_name, raw_group)
                 if not group_title:
                     continue
                 
@@ -218,9 +220,7 @@ def fetch_app2_channels(session):
     total_count = 0
     seen_urls = set()
 
-    # تعديل رابط الطلب ليطلب مخرجات ts بدلاً من m3u8
     target_url = APP2_M3U_URL.replace("output=m3u8", "output=ts")
-    # ترويسة متصفح قياسية لجلب ملف القائمة من السيرفر
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
     print("🚀 [تطبيق 2 - s1.m3u]: جاري جلب القنوات للتطبيق الثاني...")
@@ -241,20 +241,22 @@ def fetch_app2_channels(session):
                         parts = current_extinf.split(",")
                         channel_name = parts[-1].strip() if len(parts) > 1 else "Channel"
 
-                        group_title = classify_channel(channel_name)
+                        raw_group = ""
+                        if 'group-title="' in current_extinf:
+                            raw_group = current_extinf.split('group-title="')[1].split('"')[0]
+
+                        group_title = classify_channel(channel_name, raw_group)
                         if group_title:
                             logo = ""
                             if 'tvg-logo="' in current_extinf:
                                 logo = current_extinf.split('tvg-logo="')[1].split('"')[0]
 
-                            # تحويل امتداد الروابط تلقائياً إلى .ts بدلاً من .m3u8 لمنع التقطيع وخطأ 403
                             final_url = line_str.replace(".m3u8", ".ts")
                             final_url = final_url.replace("217.60.15.177:8080", "185.191.126.127:8080")
 
                             if final_url in seen_urls:
                                 continue
 
-                            # ترويسة تشغيل البث على المشغلات
                             vlc_opts_str = "#EXTVLCOPT:http-header=Icy-MetaData: 1\n#EXTVLCOPT:http-user-agent=okhttp/3.9.1"
 
                             entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n{vlc_opts_str}\n{final_url}'
