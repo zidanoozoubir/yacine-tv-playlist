@@ -1,29 +1,44 @@
 import os
 import requests
+import re
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-# 1. جلب متغيرات البيئة الخاصة بالصفحة الثانية حصراً
-GIST_ID_2 = os.environ.get("GIST_ID_2") or os.environ.get("GIST_ID_NEW")
+# 1. جلب متغيرات البيئة ومرونة تحديث أكثر من صفحة Gist في نفس الوقت
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
-# رابط مصدر التطبيق الثاني (يُفضل تعيينه كمتغير بيئة APP2_M3U_URL)
+# جلب معرفات الـ Gists المستهدفة (تأخذ من متغيرات البيئة أو الروابط المباشرة تلقائياً)
+TARGET_GIST_IDS = []
+for env_key in ["GIST_ID", "GIST_ID_1", "GIST_ID_2", "GIST_ID_NEW"]:
+    gist_val = os.environ.get(env_key)
+    if gist_val and gist_val not in TARGET_GIST_IDS:
+        TARGET_GIST_IDS.append(gist_val)
+
+# إذا لم تُحدد في متغيرات البيئة، يتم استخدام الصفحتين الخاصتين بك افتراضياً
+if not TARGET_GIST_IDS:
+    TARGET_GIST_IDS = [
+        "9c22160f66145ec833f3df816ed80239",
+        "2b7f88f1e20b990504349ccd761b4de3"
+    ]
+
+# رابط مصدر التطبيق الثاني
 APP2_M3U_URL = os.environ.get(
     "APP2_M3U_URL",
     "http://185.191.126.127:8080/get.php?username=b0:99:d7:15:88:50&password=3090914536649669&type=m3u_plus&output=ts"
 )
 
-# 2. إنشاء جلسة اتصال مستقرة
+# 2. إنشاء جلسة اتصال مستقرة وسريعة المعالجة
 def create_session():
     session = requests.Session()
-    retries = Retry(total=5, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retries)
+    retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+    adapter = HTTPAdapter(max_retries=retries, pool_connections=30, pool_maxsize=30)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
 
-# 3. قائمة التصفية لاستبعاد الدول/القنوات غير المرغوبة
+# 3. قائمة التصفية لاستبعاد الدول والقنوات غير المرغوبة
 EXCLUDE_TAGS = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
     "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)",
@@ -104,7 +119,6 @@ def classify_channel(channel_name):
     if "hbo" in name_lower:
         return "HBO"
 
-    # --- المجموعات المضافة حديثاً ---
     if any(kw in name_lower for kw in ["showtime", "شوتايم"]):
         return "SHOWTIME"
 
@@ -113,7 +127,6 @@ def classify_channel(channel_name):
 
     if any(kw in name_lower for kw in ["mh", "ام اتش", "أم اتش"]):
         return "MH GROUP"
-    # --------------------------------
 
     doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science"]
     if any(kw in name_lower for kw in doc_keywords):
@@ -126,22 +139,39 @@ def classify_channel(channel_name):
 
     return None
 
-# 5. جلب وتنقية القنوات مع التعديلات الحصرية لـ s1.m3u
+# 🛠️ [حل محوري 1]: دالة تتبع التوجيه 302 للحصول على سيرفر البث الفرعي المباشر
+def resolve_direct_url(session, target_url):
+    """
+    تستخرج دالة إعادة التوجيه الروابط المباشرة لسيرفرات البث الفرعية لتجاوز الاصطدام على البورت 8080
+    """
+    headers = {"User-Agent": "okhttp/3.9.1"}
+    try:
+        # إرسال طلب بدون تتبع التوجيه للحصول على رابط الـ Location في الاستجابة 302
+        response = session.get(target_url, headers=headers, allow_redirects=False, timeout=3, stream=True)
+        response.close()
+        if response.status_code in [301, 302] and 'Location' in response.headers:
+            return response.headers['Location'].strip()
+    except Exception:
+        pass
+    return target_url
+
+# 5. جلب وتنقية القنوات مع تطبيق حلول الثبات
 def fetch_and_process_app2(session):
     grouped_channels = defaultdict(list)
     total_count = 0
     seen_urls = set()
 
-    # تعديل رابط الطلب ليكون output=ts بدلاً من m3u8 إن أمكن
     target_url = APP2_M3U_URL.replace("output=m3u8", "output=ts")
     headers = {"User-Agent": "okhttp/3.9.1"}
 
-    print("🚀 جاري جلب وقنوات التطبيق الثاني وتجهيزها لصفحة s1.m3u...")
+    print("🚀 جاري جلب قنوات التطبيق وتجهيزها بأحدث حلول عدم التقطيع...")
     try:
         response = session.get(target_url, headers=headers, timeout=20)
         if response.status_code == 200 and "#EXTM3U" in response.text:
             lines = response.text.splitlines()
             current_extinf = ""
+
+            pending_items = []
 
             for line in lines:
                 line_str = line.strip()
@@ -158,34 +188,74 @@ def fetch_and_process_app2(session):
                             if 'tvg-logo="' in current_extinf:
                                 logo = current_extinf.split('tvg-logo="')[1].split('"')[0]
 
-                            # 🛠️ إصلاح جوهري: تحويل امتداد البث من .m3u8 إلى .ts لمنع التقطيع وخطأ 403
                             final_url = line_str.replace(".m3u8", ".ts")
-                            
-                            # توحيد المنفذ والسيرفر المستقر
                             final_url = final_url.replace("217.60.15.177:8080", "185.191.126.127:8080")
+
+                            # إضافة شرطتين مائلتين بعد كلمة live لمطابقة هيكلية السيرفر التفاعلية
+                            final_url = re.sub(r'/live/+', '/live//', final_url)
 
                             if final_url in seen_urls:
                                 continue
 
-                            # إضافة الترويسات المطلوبة للتشغيل بدون توقف
-                            vlc_opts_str = "#EXTVLCOPT:http-header=Icy-MetaData: 1\n#EXTVLCOPT:http-user-agent=okhttp/3.9.1"
-
-                            entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n{vlc_opts_str}\n{final_url}'
-                            grouped_channels[group_title].append(entry)
                             seen_urls.add(final_url)
-                            total_count += 1
+                            pending_items.append((group_title, logo, channel_name, final_url))
                         current_extinf = ""
 
-            print(f"🎯 تم استخراج ومعالجة ({total_count}) قناة بنجاح للتطبيق الثاني.")
+            print(f"🔄 جاري المعالجة السريعة والتجميع لـ ({len(pending_items)}) قناة...")
+
+            # 🛠️ [حل محوري 2]: تمويه هوية المشغل وتمرير الترويسات الرسمية لمنع الحظر (User-Agent Spoofing)
+            vlc_opts_str = (
+                "#EXTVLCOPT:http-header=Icy-MetaData: 1\n"
+                "#EXTVLCOPT:http-user-agent=okhttp/3.9.1\n"
+                "#EXTVLCOPT:http-referrer=http://albashatv.site/"
+            )
+
+            for group_title, logo, channel_name, stream_url in pending_items:
+                entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n{vlc_opts_str}\n{stream_url}'
+                grouped_channels[group_title].append(entry)
+                total_count += 1
+
+            print(f"🎯 تم تجهيز ({total_count}) قناة بنجاح بجميع ترويسات الثبات.")
     except Exception as e:
         print(f"❌ خطأ شبكة أثناء جلب القنوات: {e}")
 
     return grouped_channels, total_count
 
-# 6. تحديث صفحة GIST_ID_2 فقط
+# 6. تحديث كافـة صفحات الـ Gist المحددة
+def update_gist(session, gist_id, final_m3u_content):
+    gist_api_url = f"https://api.github.com/gists/{gist_id}"
+    gist_headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json"
+    }
+
+    try:
+        get_gist = session.get(gist_api_url, headers=gist_headers, timeout=15)
+        if get_gist.status_code == 200:
+            filename = list(get_gist.json()['files'].keys())[0]
+
+            update_payload = {
+                "files": {
+                    filename: {
+                        "content": final_m3u_content
+                    }
+                }
+            }
+
+            patch_resp = session.patch(gist_api_url, headers=gist_headers, json=update_payload)
+            if patch_resp.status_code == 200:
+                print(f"🎉 تم تحديث الصفحة ({filename}) للـ Gist [{gist_id}] بنجاح بدون تقطيع!")
+            else:
+                print(f"❌ فشل تحديث الـ Gist [{gist_id}]. كود الحالة: {patch_resp.status_code}")
+        else:
+            print(f"❌ فشل الوصول إلى Gist API لـ [{gist_id}]. كود الحالة: {get_gist.status_code}")
+    except Exception as e:
+        print(f"❌ خطأ غير متوقع أثناء التحديث لـ [{gist_id}]: {e}")
+
+# 7. التنفيذ الرئيسي
 def main():
-    if not GIST_ID_2 or not GITHUB_TOKEN:
-        print("❌ خطأ: لم يتم العثور على GIST_ID_2 أو GIST_TOKEN في متغيرات البيئة!")
+    if not GITHUB_TOKEN:
+        print("❌ خطأ: لم يتم العثور على GIST_TOKEN في متغيرات البيئة!")
         return
 
     session = create_session()
@@ -211,34 +281,9 @@ def main():
 
     final_m3u_content = "\n".join(m3u_lines)
 
-    gist_api_url = f"https://api.github.com/gists/{GIST_ID_2}"
-    gist_headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github+json"
-    }
-
-    try:
-        get_gist = session.get(gist_api_url, headers=gist_headers, timeout=15)
-        if get_gist.status_code == 200:
-            filename = list(get_gist.json()['files'].keys())[0]
-
-            update_payload = {
-                "files": {
-                    filename: {
-                        "content": final_m3u_content
-                    }
-                }
-            }
-
-            patch_resp = session.patch(gist_api_url, headers=gist_headers, json=update_payload)
-            if patch_resp.status_code == 200:
-                print(f"\n🎉 تم تحديث صفحة s1.m3u ({filename}) بنجاح بإجمالي ({total_count}) قناة بصيغة .ts وبدون تقطيع!")
-            else:
-                print(f"\n❌ فشل تحديث الـ Gist. كود الحالة: {patch_resp.status_code}")
-        else:
-            print(f"\n❌ فشل الوصول إلى Gist API. كود الحالة: {get_gist.status_code}")
-    except Exception as e:
-        print(f"\n❌ خطأ غير متوقع أثناء الاتصال بـ GitHub: {e}")
+    print("\n🔐 جاري بدء تحديث كافة صفحات الـ Gist المستهدفة...")
+    for gist_id in TARGET_GIST_IDS:
+        update_gist(session, gist_id, final_m3u_content)
 
 if __name__ == "__main__":
     main()
