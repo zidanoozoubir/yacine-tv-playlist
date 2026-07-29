@@ -43,7 +43,7 @@ EXCLUDE_TAGS = [
     "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", ".ro)", "(dk)"
 ]
 
-# 4. دالة التصنيف والفرز المعدلة والمصفاة بدقة
+# 4. دالة التصنيف والفرز المعدلة
 def classify_channel(channel_name):
     name_lower = channel_name.lower().strip()
     
@@ -51,19 +51,19 @@ def classify_channel(channel_name):
     if any(tag in name_lower for tag in EXCLUDE_TAGS):
         return None
 
-    # 🛠️ [شرط خاص]: استبعاد القنوات التي تبدأ بـ usa أو تحتوي على usa h
+    # استبعاد القنوات التي تبدأ بـ usa أو تحتوي على usa h
     if name_lower.startswith("usa") or "usa h" in name_lower:
         return None
 
-    # 🛠️ [تعديل 1]: إضافة باقة تود (BEIN TOD)
+    # باقة تود (BEIN TOD)
     if "tod" in name_lower:
         return "BEIN TOD"
 
-    # 🛠️ [تعديل 2]: تصفية ودقة باقة بيين سبورت (beIN Sports)
+    # 🛠️ [تعديل مستهدف]: باقة بيين سبورت وتشمل قنوات H.265 و HEVC و 4K
     if "bein" in name_lower:
         # قنوات بيين الفرنسية
         if any(kw in name_lower for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
-            if "bein sport" in name_lower or "bein sports" in name_lower:
+            if any(kw in name_lower for kw in ["bein sport", "bein sports", "h.265", "h265", "hevc"]):
                 return "BEIN SPORT FR"
             return "FRENCH"
 
@@ -79,14 +79,14 @@ def classify_channel(channel_name):
         if any(kw in name_lower for kw in bein_media_keywords):
             return "BEIN MEDIA"
 
-        # تشترط بيين سبورت العربية وجود عبارة "bein sport" أو "bein sports" صراحةً
-        if "bein sport" in name_lower or "bein sports" in name_lower:
+        # 🛠️ الكاشف المطور لقنوات beIN Sports العربية ليشمل جودات H.265 / HEVC / 4K
+        bein_sports_triggers = ["bein sport", "bein sports", "h.265", "h265", "hevc", "4k"]
+        if any(trigger in name_lower for trigger in bein_sports_triggers):
             return "BEIN SPORT AR"
             
-        # استبعاد أي قناة تحتوي على bein فقط بدون sport ولا تتبع الميديا
         return None
 
-    # 🛠️ [تعديل 3]: باقة القنوات الفرنسية (FRENCH)
+    # باقة القنوات الفرنسية (FRENCH)
     french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
     french_kw = [
         "tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
@@ -160,7 +160,7 @@ def classify_channel(channel_name):
 
     return None
 
-# 5. جلب وتنقية القنوات مع التعديلات الحصرية لـ s1.m3u
+# 5. جلب وتنقية القنوات
 def fetch_and_process_app2(session):
     grouped_channels = defaultdict(list)
     total_count = 0
@@ -169,7 +169,7 @@ def fetch_and_process_app2(session):
     target_url = APP2_M3U_URL.replace("output=m3u8", "output=ts")
     headers = {"User-Agent": "okhttp/3.9.1"}
 
-    print("🚀 جاري جلب القنوات وتنبيتها بدقة...")
+    print("🚀 جاري جلب القنوات وتنبيتها بدقة واسترجاع قنوات H.265...")
     try:
         response = session.get(target_url, headers=headers, timeout=20)
         if response.status_code == 200 and "#EXTM3U" in response.text:
@@ -261,13 +261,12 @@ def main():
         print("🛡️ تم إلغاء العملية للحفاظ على الصفحة الحالية بدون مسح.")
         return
 
-    # 🛠️ [ترتيب الباقات المحدث]: TOD مباشرة تحت BEIN SPORT AR والقنوات الفرنسية مضمنة بوضوح
+    # 🛠️ [تحديث الترتيب]: القنوات الفرنسية أصبحت المجموعة الأخيرة تماماً بعد DOCUMENTARY
     preferred_order = [
         "BEIN SPORT AR", 
-        "BEIN TOD",          # باقة تود مباشرة تحت بيين سبورت
+        "BEIN TOD", 
         "BEIN SPORT FR", 
         "BEIN MEDIA", 
-        "FRENCH",            # باقة القنوات الفرنسية
         "ALWAN SPORT", 
         "AL FAJER", 
         "KIDS", 
@@ -283,7 +282,8 @@ def main():
         "SHOWTIME", 
         "HOME CINEMA", 
         "MH GROUP", 
-        "DOCUMENTARY"
+        "DOCUMENTARY",
+        "FRENCH"             # 👈 القنوات الفرنسية أصبحت الباقة الأخيرة
     ]
 
     m3u_lines = ["#EXTM3U"]
