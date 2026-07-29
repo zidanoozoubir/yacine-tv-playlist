@@ -34,20 +34,20 @@ def create_session():
     session.mount('https://', adapter)
     return session
 
-# 3. قائمة التصفية لاستبعاد الدول والقنوات غير المرغوبة
+# 3. قائمة التصفية الصارمة الشاملة لإلغاء جميع الدول غير المرغوبة لتخفيف حجم الملف
 EXCLUDE_TAGS = [
-    "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro",
-    "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)",
-    " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ",
-    "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]",
-    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", ".ro)", "(dk)"
+    "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro", "vip pt", "vip nl", "vip se", "vip no", "vip al",
+    "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "fi:", "gr:", "ex-yu:", "ex yu:", "sk:", "in:", "pk:", "bd:", "af:", "ir:", "he:", "sr:", "hr:", "ba:", "mk:", "si:",
+    " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ", " al ", " pt ", " nl ", " il ", " so ", " no ", " se ",
+    "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]", "[al]", "[pt]", "[nl]", "[il]", "[so]", "[no]", "[se]",
+    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)", "(al)", "(pt)", "(nl)", "(il)", "(so)", "(no)", "(se)"
 ]
 
-# 4. دالة التصنيف والفرز المعدلة
+# 4. دالة التصنيف والفرز المعدلة بالتصفية الصارمة
 def classify_channel(channel_name):
     name_lower = channel_name.lower().strip()
     
-    # استبعاد التاجات والكلمات المستبعدة
+    # 1. استبعاد الكلمات والرموز الأجنبية المستبعدة
     if any(tag in name_lower for tag in EXCLUDE_TAGS):
         return None
 
@@ -55,19 +55,17 @@ def classify_channel(channel_name):
     if name_lower.startswith("usa") or "usa h" in name_lower:
         return None
 
-    # باقة تود (BEIN TOD)
+    # 2. باقة تود (BEIN TOD)
     if "tod" in name_lower:
         return "BEIN TOD"
 
-    # 🛠️ [تعديل مستهدف]: باقة بيين سبورت وتشمل قنوات H.265 و HEVC و 4K
+    # 3. باقة بيين سبورت وتشمل قنوات H.265 و HEVC و 4K
     if "bein" in name_lower:
-        # قنوات بيين الفرنسية
         if any(kw in name_lower for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
             if any(kw in name_lower for kw in ["bein sport", "bein sports", "h.265", "h265", "hevc"]):
                 return "BEIN SPORT FR"
             return "FRENCH"
 
-        # قنوات بيين الترفيهية والإعلامية
         bein_media_keywords = [
             "movie", "movies", "mov", "cinema", "سينما", "drama", "دراما", 
             "series", "مسلسلات", "gourmet", "gorment", "fatafeat", "فتافيت",
@@ -79,14 +77,41 @@ def classify_channel(channel_name):
         if any(kw in name_lower for kw in bein_media_keywords):
             return "BEIN MEDIA"
 
-        # 🛠️ الكاشف المطور لقنوات beIN Sports العربية ليشمل جودات H.265 / HEVC / 4K
         bein_sports_triggers = ["bein sport", "bein sports", "h.265", "h265", "hevc", "4k"]
         if any(trigger in name_lower for trigger in bein_sports_triggers):
             return "BEIN SPORT AR"
             
         return None
 
-    # باقة القنوات الفرنسية (FRENCH)
+    # 4. 🛠️ [تصفية صارمة للأخبار]: الإبقاء فقط على الجزيرة، العربية، الحدث، سكاي نيوز عربية
+    if any(kw in name_lower for kw in ["al jazeera", "aljazeera", "الجزيرة", "al arabiya", "alarabiya", "العربية", "al hadath", "alhadath", "الحدث", "sky news", "سكاي نيوز"]):
+        # التأكد أنها ليست قنوات أجنبية مثل Sky News UK
+        if "sky" in name_lower:
+            if any(ar in name_lower for ar in ["arabic", "arabia", "عرب", "عربية", "سكاي نيوز"]):
+                return "ARABIC NEWS"
+        else:
+            return "ARABIC NEWS"
+
+    # 5. 🛠️ [تصفية صارمة للأطفال]: الإبقاء حصراً على القنوات العربية والفرنسية
+    kids_ar_kw = [
+        "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
+        "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
+        "baraem", "براعم", "cn arabia", "cartoon network", "كرتون نتورك", "jeem", 
+        "تلفزيون جيم", "قناة جيم", "اطفال", "أطفال"
+    ]
+    kids_fr_kw = ["gulli", "tiji", "disney kids", "nickelodeon", "boing", "piwi", "cartoon network fr"]
+    
+    if any(kw in name_lower for kw in kids_ar_kw) or any(kw in name_lower for kw in kids_fr_kw):
+        return "KIDS"
+
+    # 6. 🛠️ [تصفية صارمة للوثائقية]: الإبقاء حصراً على القنوات العربية والفرنسية
+    doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science"]
+    if any(kw in name_lower for kw in doc_keywords):
+        foreign_doc_tags = ["al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "de:", "uk:", "es:", "it:", "tr:", "ru:", "pl:", "bg:", "cz:", "hu:", "ro:", "dk:", "us:"]
+        if not any(foreign in name_lower for foreign in foreign_doc_tags):
+            return "DOCUMENTARY"
+
+    # 7. باقة القنوات الفرنسية (FRENCH)
     french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
     french_kw = [
         "tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
@@ -96,21 +121,12 @@ def classify_channel(channel_name):
     if any(tag in name_lower for tag in french_tags) or any(kw in name_lower for kw in french_kw):
         return "FRENCH"
 
-    # بقية الباقات والأقسام
+    # بقية الباقات والأقسام العربية
     if any(kw in name_lower for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
         return "ALWAN SPORT"
 
     if "fajer" in name_lower or "الفجر" in name_lower:
         return "AL FAJER"
-
-    kids_keywords = [
-        "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
-        "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
-        "baraem", "براعم", "cn arabia", "cartoon network", "كرتون نتورك", "jeem", 
-        "تلفزيون جيم", "قناة جيم", "gulli", "tiji", "disney kids", "nickelodeon", "اطفال", "أطفال"
-    ]
-    if any(kw in name_lower for kw in kids_keywords):
-        return "KIDS"
 
     algeria_keywords = [
         "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
@@ -119,10 +135,6 @@ def classify_channel(channel_name):
     ]
     if any(kw in name_lower for kw in algeria_keywords):
         return "ALGERIA"
-
-    news_keywords = ["al jazeera", "الجزيرة", "al arabiya", "العربية", "الحدث", "sky news", "سكاي نيوز", "bbc arabic", "فرانس 24", "france 24", "اخبار", "إخبارية", "اخبارية"]
-    if any(kw in name_lower for kw in news_keywords):
-        return "ARABIC NEWS"
 
     if "alwan" in name_lower or "ألوان" in name_lower or "الوان" in name_lower:
         return "ALWAN MOVIES"
@@ -154,10 +166,6 @@ def classify_channel(channel_name):
     if any(kw in name_lower for kw in ["mh", "ام اتش", "أم اتش"]):
         return "MH GROUP"
 
-    doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science"]
-    if any(kw in name_lower for kw in doc_keywords):
-        return "DOCUMENTARY"
-
     return None
 
 # 5. جلب وتنقية القنوات
@@ -169,7 +177,7 @@ def fetch_and_process_app2(session):
     target_url = APP2_M3U_URL.replace("output=m3u8", "output=ts")
     headers = {"User-Agent": "okhttp/3.9.1"}
 
-    print("🚀 جاري جلب القنوات وتنبيتها بدقة واسترجاع قنوات H.265...")
+    print("🚀 جاري جلب القنوات وتنبيتها بالتصفية الصارمة لتقليل الحجم...")
     try:
         response = session.get(target_url, headers=headers, timeout=20)
         if response.status_code == 200 and "#EXTM3U" in response.text:
@@ -210,7 +218,7 @@ def fetch_and_process_app2(session):
                             total_count += 1
                         current_extinf = ""
 
-            print(f"🎯 تم استخراج وتصنيف ({total_count}) قناة بنجاح.")
+            print(f"🎯 تم استخراج وتصنيف ({total_count}) قناة فقط بعد التصفية الصارمة.")
     except Exception as e:
         print(f"❌ خطأ شبكة أثناء جلب القنوات: {e}")
 
@@ -239,7 +247,7 @@ def update_gist(session, gist_id, final_m3u_content):
 
             patch_resp = session.patch(gist_api_url, headers=gist_headers, json=update_payload)
             if patch_resp.status_code == 200:
-                print(f"🎉 تم تحديث الصفحة ({filename}) للـ Gist [{gist_id}] بنجاح!")
+                print(f"🎉 تم تحديث الصفحة ({filename}) للـ Gist [{gist_id}] بنجاح بحجم خفيف ومثالي!")
             else:
                 print(f"❌ فشل تحديث الـ Gist [{gist_id}]. كود الحالة: {patch_resp.status_code}")
         else:
@@ -261,7 +269,6 @@ def main():
         print("🛡️ تم إلغاء العملية للحفاظ على الصفحة الحالية بدون مسح.")
         return
 
-    # 🛠️ [تحديث الترتيب]: القنوات الفرنسية أصبحت المجموعة الأخيرة تماماً بعد DOCUMENTARY
     preferred_order = [
         "BEIN SPORT AR", 
         "BEIN TOD", 
@@ -283,7 +290,7 @@ def main():
         "HOME CINEMA", 
         "MH GROUP", 
         "DOCUMENTARY",
-        "FRENCH"             # 👈 القنوات الفرنسية أصبحت الباقة الأخيرة
+        "FRENCH"             # القنوات الفرنسية هي المجموعة الأخيرة
     ]
 
     m3u_lines = ["#EXTM3U"]
