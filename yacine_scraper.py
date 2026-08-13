@@ -234,7 +234,7 @@ def process_m3u_kz(m3u_text):
 
 
 # ==============================================================================
-# SECTION B: كود ودالة صفحة s1.m3u الخاصة بالتطبيق الجديد (وان+) والمطابقة للصور
+# SECTION B: كود ودالة صفحة s1.m3u الخفيفة والسريعة المخصصة لـ (وان+)
 # ==============================================================================
 def classify_channel_s1(channel_name, orig_group=""):
     full_text = f"{channel_name} {orig_group}".lower().strip()
@@ -246,7 +246,7 @@ def classify_channel_s1(channel_name, orig_group=""):
     if name_lower.startswith("usa") or "usa h" in full_text:
         return None
 
-    # 1. باقة تود (BEIN TOD) - تطابق صورة TOD MOVIES - تود افلام
+    # 1. باقة تود (BEIN TOD)
     if any(kw in full_text for kw in ["tod", "تود"]):
         return "BEIN TOD"
 
@@ -272,19 +272,19 @@ def classify_channel_s1(channel_name, orig_group=""):
         if any(trigger in full_text for trigger in bein_sports_triggers):
             return "BEIN SPORT AR"
 
-    # 3. باقة ام بي سي (MBC GROUP) - تطابق صورة M B C - ام بي سي و M B C VIP
+    # 3. باقة ام بي سي (MBC GROUP)
     if any(kw in full_text for kw in ["mbc", "m b c", "ام بي سي", "إم بي سي", "mpc"]):
         return "MBC GROUP"
 
-    # 4. باقة روتانا (ROTANA) - تطابق صورة ROTANA - روتانا
+    # 4. باقة روتانا (ROTANA)
     if any(kw in full_text for kw in ["rotana", "روتانا"]):
         return "ROTANA"
 
-    # 5. باقة اتش بي او (HBO) - تطابق صورة H B O - اتش بي او
+    # 5. باقة اتش بي او (HBO)
     if any(kw in full_text for kw in ["hbo", "h b o", "اتش بي او", "اتش بي أوا"]):
         return "HBO"
 
-    # 6. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE) - تطابق صورة O S N و ART VIP
+    # 6. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE)
     if any(kw in full_text for kw in ["osn", "o s n", "او اس ان", "أو إس إن", "box office", "boxoffice", "art", "ارتي"]):
         return "BOX OFFICE"
 
@@ -308,14 +308,14 @@ def classify_channel_s1(channel_name, orig_group=""):
     if any(kw in full_text for kw in ["mh", "ام اتش", "أم اتش"]):
         return "MH GROUP"
 
-    # 12. تصفية الوثائقية (DOCUMENTARY) - تطابق صورة DOCUMENTARY - وثائقي
+    # 12. تصفية الوثائقية (DOCUMENTARY)
     doc_keywords = ["documentary", "وثائقي", "وثائقية", "nat geo", "national geo", "discovery", "history", "animal planet", "ushuaia", "histoire", "science", "alwathiqia"]
     if any(kw in full_text for kw in doc_keywords):
         foreign_doc_tags = ["al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "de:", "uk:", "es:", "it:", "tr:", "ru:", "pl:", "bg:", "cz:", "hu:", "ro:", "dk:", "us:"]
         if not any(foreign in full_text for foreign in foreign_doc_tags):
             return "DOCUMENTARY"
 
-    # 13. تصفية القنوات الفرنسية (FRENCH) - تطابق صورة FRANCE - فرنسا
+    # 13. تصفية القنوات الفرنسية (FRENCH)
     french_tags = ["france", "فرنسا", "fr:", "fr ", "(fr)", "[fr]", "fr|", "fr |", "fr-", "fr_", "french"]
     french_kw = [
         "tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
@@ -344,7 +344,7 @@ def classify_channel_s1(channel_name, orig_group=""):
     if any(kw in full_text for kw in kids_ar_kw) or any(kw in name_lower for kw in kids_fr_kw):
         return "KIDS"
 
-    # 16. الجزائر (ALGERIA) - تطابق صورة ALGERIA - الجزائر
+    # 16. الجزائر (ALGERIA)
     algeria_keywords = [
         "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
         "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
@@ -389,6 +389,7 @@ PREFERRED_ORDER_S1 = [
     "FRENCH"
 ]
 
+# 🛠️ [تحديث جوهري هنا]: جعل صياغة سطر القناة لـ s1.m3u بسطرين فقط بدلاً من 5 أسطر لتخفيف الحجم بـ 60%
 def process_m3u_s1(m3u_text):
     grouped_channels = defaultdict(list)
     total_count = 0
@@ -421,13 +422,8 @@ def process_m3u_s1(m3u_text):
                     if final_url in seen_urls:
                         continue
 
-                    vlc_opts_str = (
-                        "#EXTVLCOPT:http-header=Icy-MetaData: 1\n"
-                        "#EXTVLCOPT:http-user-agent=okhttp/3.9.1\n"
-                        "#EXTVLCOPT:http-referrer=http://albashatv.site/"
-                    )
-
-                    entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n{vlc_opts_str}\n{final_url}'
+                    # كتابة سطر القناة بدون أسطر الترويسات الزائدة لجعل الملف خفيفاً وسريعاً 100%
+                    entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n{final_url}'
                     grouped_channels[group_title].append(entry)
                     seen_urls.add(final_url)
                     total_count += 1
@@ -442,7 +438,7 @@ def process_m3u_s1(m3u_text):
 
 
 # ==============================================================================
-# SECTION C: جلب ومعالجة المصدرين بشكل منفصل ومستقل
+# SECTION C: جلب ومعالجة المصدرين بشكل منفصل
 # ==============================================================================
 def fetch_and_process_app2(session):
     target_url = APP2_M3U_URL.replace("output=m3u8", "output=ts")
@@ -461,7 +457,7 @@ def fetch_and_process_app2(session):
     return None, 0
 
 def fetch_and_process_wanplus(session):
-    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) بالكود [{ACTIVATION_CODE}] لصفحة s1.m3u...")
+    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) لصفحة s1.m3u مع تخفيف الحجم...")
     api_params = {"code": ACTIVATION_CODE}
     api_headers = {
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)",
@@ -532,7 +528,7 @@ def update_specific_gist(session, gist_id, page_label, content, total_count):
 
             patch_resp = session.patch(gist_api_url, headers=gist_headers, json=update_payload)
             if patch_resp.status_code == 200:
-                print(f"🎉 تم تحديث صفحة ({page_label} - {filename}) بنجاح بإجمالي ({total_count}) قناة أصلية ومصفاة!")
+                print(f"🎉 تم تحديث صفحة ({page_label} - {filename}) بنجاح بحجم خفيف جداً وسلس!")
             else:
                 print(f"❌ فشل تحديث الـ Gist [{gist_id}]. كود الحالة: {patch_resp.status_code}")
         else:
