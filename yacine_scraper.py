@@ -35,6 +35,18 @@ def create_session():
     session.mount('https://', adapter)
     return session
 
+# ==========================================
+# محرك المطابقة الدقيقة الشامل للكلمات المستقلة (Word Boundaries)
+# ==========================================
+def match_exact_word(kw, text):
+    """تتأكد من مطابقة الكلمة كـ كلمة مستقلة فقط وتمنع المطابقة الجزئية داخل الكلمات الأخرى"""
+    pattern = r'\b' + re.escape(kw.lower()) + r'\b'
+    return bool(re.search(pattern, text.lower()))
+
+def has_word(kw_list, text):
+    return any(match_exact_word(kw, text) for kw in kw_list)
+
+
 # ==============================================================================
 # SECTION A: كود ودالة صفحة kz.m3u الأصلية القديمة (بدون أي تعديل أو مساس إطلاقاً)
 # ==============================================================================
@@ -234,7 +246,7 @@ def process_m3u_kz(m3u_text):
 
 
 # ==============================================================================
-# SECTION B: كود التصفية الصارمة المخصص لصفحة s1.m3u فقط (وان+)
+# SECTION B: كود التصفية بالمطابقة الدقيقة الشاملة المخصص لصفحة s1.m3u (وان+)
 # ==============================================================================
 EXCLUDE_TAGS_S1 = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro", "vip pt", "vip nl", "vip se", "vip no", "vip al",
@@ -249,21 +261,21 @@ def classify_channel_s1(channel_name, orig_group=""):
     full_text = f"{channel_name} {orig_group}".lower().strip()
     name_lower = channel_name.lower().strip()
 
-    # 1. استبعاد الدولة أو اللغات الأجنبية فوراً
+    # 1. استبعاد التاجات واللغات الأجنبية
     if any(tag in full_text for tag in EXCLUDE_TAGS_S1):
         return None
 
     if name_lower.startswith("usa") or "usa h" in full_text:
         return None
 
-    # 2. BEIN TOD
-    if any(kw in full_text for kw in ["tod", "تود"]):
+    # 2. 🛠️ باقة تود (BEIN TOD) - مطابقة كلمة TOD ككلمة مستقلة فقط دون الاقتراب من TODAY
+    if has_word(["tod", "تود"], full_text) and "today" not in full_text:
         return "BEIN TOD"
 
-    # 3. BEIN SPORT AR / FR / MEDIA
-    if any(kw in full_text for kw in ["bein", "بي ان", "بي إن"]):
-        if any(kw in full_text for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
-            if any(kw in full_text for kw in ["sport", "sports", "h.265", "h265", "hevc"]):
+    # 3. باقة بيين سبورت
+    if has_word(["bein", "بي ان", "بي إن"], full_text):
+        if has_word(["fr", "france", "french", "فرنسية", "فرنسيه"], full_text):
+            if has_word(["sport", "sports", "h.265", "h265", "hevc"], full_text):
                 return "BEIN SPORT FR"
             return "FRENCH"
 
@@ -275,107 +287,106 @@ def classify_channel_s1(channel_name, orig_group=""):
             "box office", "boxoffice", "pop up", "popup", "media", "entertainment", 
             "junior", "news", "اخبار", "أخبار", "افلام", "أفلام", "hgtv", "starz"
         ]
-        if any(kw in full_text for kw in bein_media_keywords):
+        if has_word(bein_media_keywords, full_text):
             return "BEIN MEDIA"
 
         bein_sports_triggers = ["sport", "sports", "h.265", "h265", "hevc", "4k", "hd", "sd"]
-        if any(trigger in full_text for trigger in bein_sports_triggers):
+        if has_word(bein_sports_triggers, full_text):
             return "BEIN SPORT AR"
 
-    # 4. MBC GROUP
-    if any(kw in full_text for kw in ["mbc", "m b c", "ام بي سي", "إم بي سي", "mpc"]):
+    # 4. باقة ام بي سي (MBC GROUP)
+    if has_word(["mbc", "m b c", "ام بي سي", "إم بي سي", "mpc"], full_text):
         return "MBC GROUP"
 
-    # 5. ROTANA
-    if any(kw in full_text for kw in ["rotana", "روتانا"]):
+    # 5. باقة روتانا (ROTANA)
+    if has_word(["rotana", "روتانا"], full_text):
         return "ROTANA"
 
-    # 6. HBO
-    if any(kw in full_text for kw in ["hbo", "h b o", "اتش بي او", "اتش بي أوا"]):
+    # 6. باقة اتش بي او (HBO)
+    if has_word(["hbo", "h b o", "اتش بي او", "اتش بي أوا"], full_text):
         return "HBO"
 
-    # 7. BOX OFFICE (OSN, Box Office, ART)
-    if any(kw in full_text for kw in ["osn", "o s n", "او اس ان", "أو إس إن", "box office", "boxoffice", "art vip", "ارتي"]):
-        return "BOX OFFICE"
-
-    # 8. NETFLIX (Netflix, Shahid)
-    if any(kw in full_text for kw in ["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"]):
-        return "NETFLIX"
-
-    # 9. AMAZON PRIME
-    if any(kw in full_text for kw in ["amazon", "prime", "أمازون", "امازون"]):
-        return "AMAZON PRIME"
-
-    # 10. SHOWTIME
-    if any(kw in full_text for kw in ["showtime", "شوتايم"]):
-        return "SHOWTIME"
-
-    # 11. HOME CINEMA
-    if any(kw in full_text for kw in ["home cinema", "homecinema", "هوم سينما"]):
-        return "HOME CINEMA"
-
-    # 12. MH GROUP
-    if any(kw in full_text for kw in ["mh", "ام اتش", "أم اتش"]):
-        return "MH GROUP"
-
-    # 13. ALWAN SPORT
-    if any(kw in full_text for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
+    # 7. باقة الوان سبورت (ALWAN SPORT)
+    if has_word(["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"], full_text):
         return "ALWAN SPORT"
 
-    # 14. AL FAJER
-    if "fajer" in full_text or "الفجر" in full_text:
-        return "AL FAJER"
-
-    # 15. ALWAN MOVIES
-    if "alwan" in full_text or "ألوان" in full_text or "الوان" in full_text:
+    # 8. باقة الوان افلام (ALWAN MOVIES)
+    if has_word(["alwan", "ألوان", "الوان"], full_text):
         return "ALWAN MOVIES"
 
-    # 16. ARABIC NEWS (حصراً: الجزيرة، العربية، الحدث، سكاي نيوز عربية)
-    if any(kw in full_text for kw in ["al jazeera", "aljazeera", "الجزيرة", "al arabiya", "alarabiya", "العربية", "al hadath", "alhadath", "الحدث", "sky news", "سكاي نيوز"]):
-        if "sky" in full_text:
-            if any(ar in full_text for ar in ["arabic", "arabia", "عرب", "عربية", "سكاي نيوز"]):
-                return "ARABIC NEWS"
-        else:
-            return "ARABIC NEWS"
+    # 9. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE)
+    if has_word(["osn", "o s n", "او اس ان", "أو إس إن", "box office", "boxoffice", "art", "ارتي", "أرتي"], full_text):
+        return "BOX OFFICE"
 
-    # 17. KIDS (عربي وفرنسي فقط)
-    kids_ar_kw = [
-        "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
-        "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
-        "baraem", "براعم", "cn arabia", "cartoon network", "كرتون نتورك", "jeem", 
-        "تلفزيون جيم", "قناة جيم", "اطفال", "أطفال"
+    # 10. باقة نتفليكس وشاهد (NETFLIX)
+    if has_word(["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"], full_text):
+        return "NETFLIX"
+
+    # 11. باقة أمازون برايم (AMAZON PRIME)
+    if has_word(["amazon", "prime", "أمازون", "امازون"], full_text):
+        return "AMAZON PRIME"
+
+    # 12. باقة شوتايم (SHOWTIME)
+    if has_word(["showtime", "شوتايم"], full_text):
+        return "SHOWTIME"
+
+    # 13. باقة هوم سينما (HOME CINEMA)
+    if has_word(["home cinema", "homecinema", "هوم سينما"], full_text):
+        return "HOME CINEMA"
+
+    # 14. باقة ام اتش (MH GROUP)
+    if has_word(["mh", "ام اتش", "أم اتش"], full_text):
+        return "MH GROUP"
+
+    # 15. 🛠️ تصفية الأطفال الصارمة جداً لـ s1.m3u (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية)
+    kids_strict_kw = [
+        "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري",
+        "masha", "ماشا", "دب",
+        "spacetoon", "سبيستون", "سبيس تون",
+        "baraem", "براعم",
+        "cartoon network", "cn arabia", "كرتون نتورك" # إضافـة كرتون نتورك العربية
     ]
-    kids_fr_kw = ["gulli", "tiji", "disney kids", "nickelodeon", "boing", "piwi", "cartoon network fr"]
-    if any(kw in full_text for kw in kids_ar_kw) or any(kw in full_text for kw in kids_fr_kw):
+    if has_word(kids_strict_kw, full_text):
         return "KIDS"
 
-    # 18. DOCUMENTARY (عربي وفرنسي فقط)
+    # 16. تصفية الوثائقية (DOCUMENTARY)
     doc_keywords = ["documentary", "وثائقي", "وثائقية", "nat geo", "national geo", "discovery", "history", "animal planet", "ushuaia", "histoire", "science", "alwathiqia"]
-    if any(kw in full_text for kw in doc_keywords):
+    if has_word(doc_keywords, full_text):
         foreign_doc_tags = ["al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "de:", "uk:", "es:", "it:", "tr:", "ru:", "pl:", "bg:", "cz:", "hu:", "ro:", "dk:", "us:"]
         if not any(foreign in full_text for foreign in foreign_doc_tags):
             return "DOCUMENTARY"
 
-    # 19. ALGERIA
+    # 17. تصفية الأخبار (ARABIC NEWS)
+    if has_word(["al jazeera", "aljazeera", "الجزيرة", "al arabiya", "alarabiya", "العربية", "al hadath", "alhadath", "الحدث", "sky news", "سكاي نيوز"], full_text):
+        if "sky" in full_text:
+            if has_word(["arabic", "arabia", "عرب", "عربية", "سكاي نيوز"], full_text):
+                return "ARABIC NEWS"
+        else:
+            return "ARABIC NEWS"
+
+    # 18. الجزائر (ALGERIA)
     algeria_keywords = [
         "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
         "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
         "ennahar", "samira", "سميرة", "numidia", "نوميديا", "الوطنية", "el watania", "al24", "dz -", "alg:"
     ]
-    if any(kw in full_text for kw in algeria_keywords):
+    if has_word(algeria_keywords, full_text):
         return "ALGERIA"
 
-    # 20. FRENCH (المجموعة الأخيرة)
+    # 19. الفجر (AL FAJER)
+    if has_word(["fajer", "الفجر"], full_text):
+        return "AL FAJER"
+
+    # 20. القنوات الفرنسية (FRENCH)
     french_tags = ["france", "فرنسا", "fr:", "fr ", "(fr)", "[fr]", "fr|", "fr |", "fr-", "fr_", "french"]
     french_kw = [
         "tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
         "ocs", "cine", "ciné", "w9", "tmc", "tfx", "gulli", "tiji", "france 2", 
         "france 3", "france 4", "france 5", "france 24", "bfm", "planete", "animaux"
     ]
-    if any(tag in full_text for tag in french_tags) or any(kw in full_text for kw in french_kw):
+    if any(tag in full_text for tag in french_tags) or has_word(french_kw, full_text):
         return "FRENCH"
 
-    # 🚫 استبعاد ومنع أي قناة أخرى لا تنتمي للـ 21 مجموعة المحددة حصراً!
     return None
 
 PREFERRED_ORDER_S1 = [
@@ -399,7 +410,7 @@ PREFERRED_ORDER_S1 = [
     "HOME CINEMA", 
     "MH GROUP", 
     "DOCUMENTARY",
-    "FRENCH"             # الباقة الأخيرة
+    "FRENCH"
 ]
 
 def process_m3u_s1(m3u_text):
@@ -468,7 +479,7 @@ def fetch_and_process_app2(session):
     return None, 0
 
 def fetch_and_process_wanplus(session):
-    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) بـ التصفية الصارمة لـ s1.m3u...")
+    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) بـ التصفية الصارمة الدقيقة لـ s1.m3u...")
     api_params = {"code": ACTIVATION_CODE}
     api_headers = {
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)",
@@ -557,7 +568,7 @@ def main():
     kz_content, kz_count = fetch_and_process_app2(session)
     update_specific_gist(session, GIST_KZ_ID, "kz.m3u", kz_content, kz_count)
 
-    # 2. تنفيذ المسار الثاني (Wan+ الجديد -> تحديث s1.m3u بالتصفية الصارمة)
+    # 2. تنفيذ المسار الثاني (Wan+ الجديد -> تحديث s1.m3u)
     s1_content, s1_count = fetch_and_process_wanplus(session)
     update_specific_gist(session, GIST_S1_ID, "s1.m3u", s1_content, s1_count)
 
