@@ -234,23 +234,33 @@ def process_m3u_kz(m3u_text):
 
 
 # ==============================================================================
-# SECTION B: كود ودالة صفحة s1.m3u الخفيفة والسريعة المخصصة لـ (وان+)
+# SECTION B: كود التصفية الصارمة المخصص لصفحة s1.m3u فقط (وان+)
 # ==============================================================================
+EXCLUDE_TAGS_S1 = [
+    "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro", "vip pt", "vip nl", "vip se", "vip no", "vip al",
+    "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "fi:", "gr:", "ex-yu:", "ex yu:", "sk:", "in:", "pk:", "bd:", "af:", "ir:", "he:", "sr:", "hr:", "ba:", "mk:", "si:",
+    " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ", " al ", " pt ", " nl ", " il ", " so ", " no ", " se ",
+    "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]", "[al]", "[pt]", "[nl]", "[il]", "[so]", "[no]", "[se]",
+    "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)", "(al)", "(pt)", "(nl)", "(il)", "(so)", "(no)", "(se)",
+    "china", "christian", "cine mania india", "cine mania usa", "cric life", "cricket", "denmark", "ethiopia", "finland", "germany", "greece", "india", "malaysia", "nepal", "pakistan", "poland", "portugal", "romania", "russia", "thailand", "turkey", "vietnam"
+]
+
 def classify_channel_s1(channel_name, orig_group=""):
     full_text = f"{channel_name} {orig_group}".lower().strip()
     name_lower = channel_name.lower().strip()
 
-    if any(tag in full_text for tag in EXCLUDE_TAGS_KZ):
+    # 1. استبعاد الدولة أو اللغات الأجنبية فوراً
+    if any(tag in full_text for tag in EXCLUDE_TAGS_S1):
         return None
 
     if name_lower.startswith("usa") or "usa h" in full_text:
         return None
 
-    # 1. باقة تود (BEIN TOD)
+    # 2. BEIN TOD
     if any(kw in full_text for kw in ["tod", "تود"]):
         return "BEIN TOD"
 
-    # 2. باقة بيين الميديا والرياضة
+    # 3. BEIN SPORT AR / FR / MEDIA
     if any(kw in full_text for kw in ["bein", "بي ان", "بي إن"]):
         if any(kw in full_text for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
             if any(kw in full_text for kw in ["sport", "sports", "h.265", "h265", "hevc"]):
@@ -272,50 +282,90 @@ def classify_channel_s1(channel_name, orig_group=""):
         if any(trigger in full_text for trigger in bein_sports_triggers):
             return "BEIN SPORT AR"
 
-    # 3. باقة ام بي سي (MBC GROUP)
+    # 4. MBC GROUP
     if any(kw in full_text for kw in ["mbc", "m b c", "ام بي سي", "إم بي سي", "mpc"]):
         return "MBC GROUP"
 
-    # 4. باقة روتانا (ROTANA)
+    # 5. ROTANA
     if any(kw in full_text for kw in ["rotana", "روتانا"]):
         return "ROTANA"
 
-    # 5. باقة اتش بي او (HBO)
+    # 6. HBO
     if any(kw in full_text for kw in ["hbo", "h b o", "اتش بي او", "اتش بي أوا"]):
         return "HBO"
 
-    # 6. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE)
-    if any(kw in full_text for kw in ["osn", "o s n", "او اس ان", "أو إس إن", "box office", "boxoffice", "art", "ارتي"]):
+    # 7. BOX OFFICE (OSN, Box Office, ART)
+    if any(kw in full_text for kw in ["osn", "o s n", "او اس ان", "أو إس إن", "box office", "boxoffice", "art vip", "ارتي"]):
         return "BOX OFFICE"
 
-    # 7. باقة نتفليكس وشاهد (NETFLIX)
+    # 8. NETFLIX (Netflix, Shahid)
     if any(kw in full_text for kw in ["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"]):
         return "NETFLIX"
 
-    # 8. باقة أمازون برايم (AMAZON PRIME)
+    # 9. AMAZON PRIME
     if any(kw in full_text for kw in ["amazon", "prime", "أمازون", "امازون"]):
         return "AMAZON PRIME"
 
-    # 9. باقة شوتايم (SHOWTIME)
+    # 10. SHOWTIME
     if any(kw in full_text for kw in ["showtime", "شوتايم"]):
         return "SHOWTIME"
 
-    # 10. باقة هوم سينما (HOME CINEMA)
+    # 11. HOME CINEMA
     if any(kw in full_text for kw in ["home cinema", "homecinema", "هوم سينما"]):
         return "HOME CINEMA"
 
-    # 11. باقة ام اتش (MH GROUP)
+    # 12. MH GROUP
     if any(kw in full_text for kw in ["mh", "ام اتش", "أم اتش"]):
         return "MH GROUP"
 
-    # 12. تصفية الوثائقية (DOCUMENTARY)
+    # 13. ALWAN SPORT
+    if any(kw in full_text for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
+        return "ALWAN SPORT"
+
+    # 14. AL FAJER
+    if "fajer" in full_text or "الفجر" in full_text:
+        return "AL FAJER"
+
+    # 15. ALWAN MOVIES
+    if "alwan" in full_text or "ألوان" in full_text or "الوان" in full_text:
+        return "ALWAN MOVIES"
+
+    # 16. ARABIC NEWS (حصراً: الجزيرة، العربية، الحدث، سكاي نيوز عربية)
+    if any(kw in full_text for kw in ["al jazeera", "aljazeera", "الجزيرة", "al arabiya", "alarabiya", "العربية", "al hadath", "alhadath", "الحدث", "sky news", "سكاي نيوز"]):
+        if "sky" in full_text:
+            if any(ar in full_text for ar in ["arabic", "arabia", "عرب", "عربية", "سكاي نيوز"]):
+                return "ARABIC NEWS"
+        else:
+            return "ARABIC NEWS"
+
+    # 17. KIDS (عربي وفرنسي فقط)
+    kids_ar_kw = [
+        "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
+        "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
+        "baraem", "براعم", "cn arabia", "cartoon network", "كرتون نتورك", "jeem", 
+        "تلفزيون جيم", "قناة جيم", "اطفال", "أطفال"
+    ]
+    kids_fr_kw = ["gulli", "tiji", "disney kids", "nickelodeon", "boing", "piwi", "cartoon network fr"]
+    if any(kw in full_text for kw in kids_ar_kw) or any(kw in full_text for kw in kids_fr_kw):
+        return "KIDS"
+
+    # 18. DOCUMENTARY (عربي وفرنسي فقط)
     doc_keywords = ["documentary", "وثائقي", "وثائقية", "nat geo", "national geo", "discovery", "history", "animal planet", "ushuaia", "histoire", "science", "alwathiqia"]
     if any(kw in full_text for kw in doc_keywords):
         foreign_doc_tags = ["al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "de:", "uk:", "es:", "it:", "tr:", "ru:", "pl:", "bg:", "cz:", "hu:", "ro:", "dk:", "us:"]
         if not any(foreign in full_text for foreign in foreign_doc_tags):
             return "DOCUMENTARY"
 
-    # 13. تصفية القنوات الفرنسية (FRENCH)
+    # 19. ALGERIA
+    algeria_keywords = [
+        "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
+        "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
+        "ennahar", "samira", "سميرة", "numidia", "نوميديا", "الوطنية", "el watania", "al24", "dz -", "alg:"
+    ]
+    if any(kw in full_text for kw in algeria_keywords):
+        return "ALGERIA"
+
+    # 20. FRENCH (المجموعة الأخيرة)
     french_tags = ["france", "فرنسا", "fr:", "fr ", "(fr)", "[fr]", "fr|", "fr |", "fr-", "fr_", "french"]
     french_kw = [
         "tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
@@ -325,44 +375,7 @@ def classify_channel_s1(channel_name, orig_group=""):
     if any(tag in full_text for tag in french_tags) or any(kw in full_text for kw in french_kw):
         return "FRENCH"
 
-    # 14. تصفية الأخبار (ARABIC NEWS)
-    if any(kw in full_text for kw in ["al jazeera", "aljazeera", "الجزيرة", "al arabiya", "alarabiya", "العربية", "al hadath", "alhadath", "الحدث", "sky news", "سكاي نيوز"]):
-        if "sky" in full_text:
-            if any(ar in full_text for ar in ["arabic", "arabia", "عرب", "عربية", "سكاي نيوز"]):
-                return "ARABIC NEWS"
-        else:
-            return "ARABIC NEWS"
-
-    # 15. تصفية الأطفال (KIDS)
-    kids_ar_kw = [
-        "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
-        "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
-        "baraem", "براعم", "cn arabia", "cartoon network", "كرتون نتورك", "jeem", 
-        "تلفزيون جيم", "قناة جيم", "اطفال", "أطفال"
-    ]
-    kids_fr_kw = ["gulli", "tiji", "disney kids", "nickelodeon", "boing", "piwi", "cartoon network fr"]
-    if any(kw in full_text for kw in kids_ar_kw) or any(kw in name_lower for kw in kids_fr_kw):
-        return "KIDS"
-
-    # 16. الجزائر (ALGERIA)
-    algeria_keywords = [
-        "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
-        "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
-        "ennahar", "samira", "سميرة", "numidia", "نوميديا", "الوطنية", "el watania", "al24", "dz -", "alg:"
-    ]
-    if any(kw in full_text for kw in algeria_keywords):
-        return "ALGERIA"
-
-    # 17. ألوان سبورت وألوان سينما والفجر
-    if any(kw in full_text for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
-        return "ALWAN SPORT"
-
-    if "fajer" in full_text or "الفجر" in full_text:
-        return "AL FAJER"
-
-    if "alwan" in full_text or "ألوان" in full_text or "الوان" in full_text:
-        return "ALWAN MOVIES"
-
+    # 🚫 استبعاد ومنع أي قناة أخرى لا تنتمي للـ 21 مجموعة المحددة حصراً!
     return None
 
 PREFERRED_ORDER_S1 = [
@@ -386,10 +399,9 @@ PREFERRED_ORDER_S1 = [
     "HOME CINEMA", 
     "MH GROUP", 
     "DOCUMENTARY",
-    "FRENCH"
+    "FRENCH"             # الباقة الأخيرة
 ]
 
-# 🛠️ [تحديث جوهري هنا]: جعل صياغة سطر القناة لـ s1.m3u بسطرين فقط بدلاً من 5 أسطر لتخفيف الحجم بـ 60%
 def process_m3u_s1(m3u_text):
     grouped_channels = defaultdict(list)
     total_count = 0
@@ -422,7 +434,6 @@ def process_m3u_s1(m3u_text):
                     if final_url in seen_urls:
                         continue
 
-                    # كتابة سطر القناة بدون أسطر الترويسات الزائدة لجعل الملف خفيفاً وسريعاً 100%
                     entry = f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}",{channel_name}\n{final_url}'
                     grouped_channels[group_title].append(entry)
                     seen_urls.add(final_url)
@@ -438,7 +449,7 @@ def process_m3u_s1(m3u_text):
 
 
 # ==============================================================================
-# SECTION C: جلب ومعالجة المصدرين بشكل منفصل
+# SECTION C: جلب ومعالجة المصدرين بشكل منفصل ومستقل
 # ==============================================================================
 def fetch_and_process_app2(session):
     target_url = APP2_M3U_URL.replace("output=m3u8", "output=ts")
@@ -457,7 +468,7 @@ def fetch_and_process_app2(session):
     return None, 0
 
 def fetch_and_process_wanplus(session):
-    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) لصفحة s1.m3u مع تخفيف الحجم...")
+    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) بـ التصفية الصارمة لـ s1.m3u...")
     api_params = {"code": ACTIVATION_CODE}
     api_headers = {
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)",
@@ -528,7 +539,7 @@ def update_specific_gist(session, gist_id, page_label, content, total_count):
 
             patch_resp = session.patch(gist_api_url, headers=gist_headers, json=update_payload)
             if patch_resp.status_code == 200:
-                print(f"🎉 تم تحديث صفحة ({page_label} - {filename}) بنجاح بحجم خفيف جداً وسلس!")
+                print(f"🎉 تم تحديث صفحة ({page_label} - {filename}) بنجاح بحجم خفيف ومصفى بـ ({total_count}) قناة فقط!")
             else:
                 print(f"❌ فشل تحديث الـ Gist [{gist_id}]. كود الحالة: {patch_resp.status_code}")
         else:
@@ -546,7 +557,7 @@ def main():
     kz_content, kz_count = fetch_and_process_app2(session)
     update_specific_gist(session, GIST_KZ_ID, "kz.m3u", kz_content, kz_count)
 
-    # 2. تنفيذ المسار الثاني (Wan+ الجديد -> تحديث s1.m3u)
+    # 2. تنفيذ المسار الثاني (Wan+ الجديد -> تحديث s1.m3u بالتصفية الصارمة)
     s1_content, s1_count = fetch_and_process_wanplus(session)
     update_specific_gist(session, GIST_S1_ID, "s1.m3u", s1_content, s1_count)
 
