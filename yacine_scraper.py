@@ -10,17 +10,14 @@ from urllib3.util import Retry
 # ==========================================
 GITHUB_TOKEN = os.environ.get("GIST_TOKEN")
 
-# معرّفات الصفحات المستهدفة المحددة بدقة
 GIST_S1_ID = os.environ.get("GIST_S1_ID") or "9c22160f66145ec833f3df816ed80239"  # صفحة s1.m3u (التطبيق الجديد وان+)
 GIST_KZ_ID = os.environ.get("GIST_KZ_ID") or "2b7f88f1e20b990504349ccd761b4de3"  # صفحة kz.m3u (التطبيق القديم App2)
 
-# بيانات المصدر الأول: التطبيق القديم (APP2)
 APP2_M3U_URL = os.environ.get(
     "APP2_M3U_URL",
     "http://185.191.126.127:8080/get.php?username=b0:99:d7:15:88:50&password=3090914536649669&type=m3u_plus&output=ts"
 )
 
-# بيانات المصدر الثاني: التطبيق الجديد (وان+ / Wan+)
 WANPLUS_API_ENDPOINT = os.environ.get(
     "WANPLUS_API_ENDPOINT",
     "https://atared.serv00.net/lion_panel_4k_x91/api/verificar_codigo.php"
@@ -50,25 +47,27 @@ EXCLUDE_TAGS = [
 ]
 
 # ==========================================
-# 4. دالة التصنيف والفرز الموحدة
+# 4. دالة التصنيف المكتشفة بالدمج الذكي
 # ==========================================
-def classify_channel(channel_name):
+def classify_channel(channel_name, orig_group=""):
+    # دمج اسم القناة مع اسم المجموعة الأصلي المستخرج من السيرفر لضمان اكتشاف كافة الباقات
+    full_text = f"{channel_name} {orig_group}".lower().strip()
     name_lower = channel_name.lower().strip()
-    
-    if any(tag in name_lower for tag in EXCLUDE_TAGS):
+
+    if any(tag in full_text for tag in EXCLUDE_TAGS):
         return None
 
-    if name_lower.startswith("usa") or "usa h" in name_lower:
+    if name_lower.startswith("usa") or "usa h" in full_text:
         return None
 
     # باقة تود (BEIN TOD)
-    if "tod" in name_lower:
+    if "tod" in full_text:
         return "BEIN TOD"
 
-    # باقة بيين سبورت وتشمل جودات H.265 / HEVC / 4K
-    if "bein" in name_lower:
-        if any(kw in name_lower for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
-            if any(kw in name_lower for kw in ["bein sport", "bein sports", "h.265", "h265", "hevc"]):
+    # باقة بيين سبورت
+    if "bein" in full_text:
+        if any(kw in full_text for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
+            if any(kw in full_text for kw in ["bein sport", "bein sports", "h.265", "h265", "hevc"]):
                 return "BEIN SPORT FR"
             return "FRENCH"
 
@@ -80,24 +79,24 @@ def classify_channel(channel_name):
             "box office", "boxoffice", "pop up", "popup", "media", "entertainment", 
             "junior", "news", "اخبار", "أخبار", "افلام", "أفلام"
         ]
-        if any(kw in name_lower for kw in bein_media_keywords):
+        if any(kw in full_text for kw in bein_media_keywords):
             return "BEIN MEDIA"
 
         bein_sports_triggers = ["bein sport", "bein sports", "h.265", "h265", "hevc", "4k"]
-        if any(trigger in name_lower for trigger in bein_sports_triggers):
+        if any(trigger in full_text for trigger in bein_sports_triggers):
             return "BEIN SPORT AR"
             
         return None
 
-    # تصفية صارمة للأخبار
-    if any(kw in name_lower for kw in ["al jazeera", "aljazeera", "الجزيرة", "al arabiya", "alarabiya", "العربية", "al hadath", "alhadath", "الحدث", "sky news", "سكاي نيوز"]):
-        if "sky" in name_lower:
-            if any(ar in name_lower for ar in ["arabic", "arabia", "عرب", "عربية", "سكاي نيوز"]):
+    # تصفية الأخبار
+    if any(kw in full_text for kw in ["al jazeera", "aljazeera", "الجزيرة", "al arabiya", "alarabiya", "العربية", "al hadath", "alhadath", "الحدث", "sky news", "سكاي نيوز"]):
+        if "sky" in full_text:
+            if any(ar in full_text for ar in ["arabic", "arabia", "عرب", "عربية", "سكاي نيوز"]):
                 return "ARABIC NEWS"
         else:
             return "ARABIC NEWS"
 
-    # تصفية صارمة للأطفال (عربي وفرنسي)
+    # تصفية الأطفال
     kids_ar_kw = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
         "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
@@ -105,31 +104,31 @@ def classify_channel(channel_name):
         "تلفزيون جيم", "قناة جيم", "اطفال", "أطفال"
     ]
     kids_fr_kw = ["gulli", "tiji", "disney kids", "nickelodeon", "boing", "piwi", "cartoon network fr"]
-    if any(kw in name_lower for kw in kids_ar_kw) or any(kw in name_lower for kw in kids_fr_kw):
+    if any(kw in full_text for kw in kids_ar_kw) or any(kw in full_text for kw in kids_fr_kw):
         return "KIDS"
 
-    # تصفية صارمة للوثائقية (عربي وفرنسي)
-    doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science"]
-    if any(kw in name_lower for kw in doc_keywords):
+    # تصفية الوثائقية
+    doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "documentaire", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science", "doc"]
+    if any(kw in full_text for kw in doc_keywords):
         foreign_doc_tags = ["al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "de:", "uk:", "es:", "it:", "tr:", "ru:", "pl:", "bg:", "cz:", "hu:", "ro:", "dk:", "us:"]
-        if not any(foreign in name_lower for foreign in foreign_doc_tags):
+        if not any(foreign in full_text for foreign in foreign_doc_tags):
             return "DOCUMENTARY"
 
-    # باقة القنوات الفرنسية
-    french_tags = ["fr:", "fr ", "(fr)", "[fr]", "france"]
+    # باقة القنوات الفرنسية (توسيع التاجات للشمولية)
+    french_tags = ["fr:", "fr ", "(fr)", "[fr]", "fr|", "fr |", "fr-", "fr -", "france", "french"]
     french_kw = [
         "tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
         "ocs", "cine", "ciné", "w9", "tmc", "tfx", "gulli", "tiji", "france 2", 
         "france 3", "france 4", "france 5", "france 24", "bfm"
     ]
-    if any(tag in name_lower for tag in french_tags) or any(kw in name_lower for kw in french_kw):
+    if any(tag in full_text for tag in french_tags) or any(kw in full_text for kw in french_kw):
         return "FRENCH"
 
-    # بقية الباقات
-    if any(kw in name_lower for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
+    # بقية الباقات الترفيهية والعربية
+    if any(kw in full_text for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
         return "ALWAN SPORT"
 
-    if "fajer" in name_lower or "الفجر" in name_lower:
+    if "fajer" in full_text or "الفجر" in full_text:
         return "AL FAJER"
 
     algeria_keywords = [
@@ -137,37 +136,37 @@ def classify_channel(channel_name):
         "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
         "ennahar", "samira", "سميرة", "numidia", "نوميديا", "الوطنية", "el watania", "al24"
     ]
-    if any(kw in name_lower for kw in algeria_keywords):
+    if any(kw in full_text for kw in algeria_keywords):
         return "ALGERIA"
 
-    if "alwan" in name_lower or "ألوان" in name_lower or "الوان" in name_lower:
+    if "alwan" in full_text or "ألوان" in full_text or "الوان" in full_text:
         return "ALWAN MOVIES"
 
-    if "rotana" in name_lower or "روتانا" in name_lower:
+    if "rotana" in full_text or "روتانا" in full_text:
         return "ROTANA"
 
-    if "mbc" in name_lower or "ام بي سي" in name_lower or "إم بي سي" in name_lower:
+    if "mbc" in full_text or "ام بي سي" in full_text or "إم بي سي" in full_text:
         return "MBC GROUP"
 
-    if any(kw in name_lower for kw in ["box office", "boxoffice", "box-office", "بوكس أوفيس", "بوكس اوفيس"]):
+    if any(kw in full_text for kw in ["box office", "boxoffice", "box-office", "بوكس أوفيس", "بوكس اوفيس"]):
         return "BOX OFFICE"
 
-    if "netflix" in name_lower or "نتفليكس" in name_lower or "نتفلكس" in name_lower:
+    if any(kw in full_text for kw in ["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"]):
         return "NETFLIX"
 
-    if "amazon" in name_lower or "prime" in name_lower or "أمازون" in name_lower or "امازون" in name_lower:
+    if any(kw in full_text for kw in ["amazon", "prime", "أمازون", "امازون"]):
         return "AMAZON PRIME"
 
-    if "hbo" in name_lower:
+    if "hbo" in full_text:
         return "HBO"
 
-    if any(kw in name_lower for kw in ["showtime", "شوتايم"]):
+    if any(kw in full_text for kw in ["showtime", "شوتايم"]):
         return "SHOWTIME"
 
-    if any(kw in name_lower for kw in ["home cinema", "homecinema", "هوم سينما", "هومسينما"]):
+    if any(kw in full_text for kw in ["home cinema", "homecinema", "هوم سينما", "هومسينما"]):
         return "HOME CINEMA"
 
-    if any(kw in name_lower for kw in ["mh", "ام اتش", "أم اتش"]):
+    if any(kw in full_text for kw in ["mh", "ام اتش", "أم اتش"]):
         return "MH GROUP"
 
     return None
@@ -219,7 +218,13 @@ def process_raw_m3u_text(m3u_text, is_app2=False):
                 parts = current_extinf.split(",")
                 channel_name = parts[-1].strip() if len(parts) > 1 else "Channel"
 
-                group_title = classify_channel(channel_name)
+                # استخراج اسم المجموعة الأصلي من ترويسة group-title="..."
+                orig_group = ""
+                if 'group-title="' in current_extinf:
+                    orig_group = current_extinf.split('group-title="')[1].split('"')[0]
+
+                # الفحص بالدمج الذكي
+                group_title = classify_channel(channel_name, orig_group)
                 if group_title:
                     logo = ""
                     if 'tvg-logo="' in current_extinf:
@@ -285,7 +290,6 @@ def fetch_and_process_wanplus(session):
     }
 
     try:
-        # الاتصال بسيرفر API لاستخراج m3u_url المباشر
         api_resp = session.get(WANPLUS_API_ENDPOINT, params=api_params, headers=api_headers, timeout=15)
         if api_resp.status_code == 200:
             json_data = api_resp.json()
