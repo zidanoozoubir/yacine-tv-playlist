@@ -36,7 +36,7 @@ def create_session():
     return session
 
 # ==============================================================================
-# SECTION A: كود ودالة صفحة kz.m3u الأصلية القديمة (بدون أي تعديل أو مساس)
+# SECTION A: كود ودالة صفحة kz.m3u الأصلية القديمة (بدون أي تعديل أو مساس إطلاقاً)
 # ==============================================================================
 EXCLUDE_TAGS_KZ = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro", "vip pt", "vip nl", "vip se", "vip no", "vip al",
@@ -234,7 +234,7 @@ def process_m3u_kz(m3u_text):
 
 
 # ==============================================================================
-# SECTION B: كود ودالة صفحة s1.m3u الذكية الخاصة بالتطبيق الجديد (وان+)
+# SECTION B: كود ودالة صفحة s1.m3u الخاصة بالتطبيق الجديد (وان+) والمطابقة للصور
 # ==============================================================================
 def classify_channel_s1(channel_name, orig_group=""):
     full_text = f"{channel_name} {orig_group}".lower().strip()
@@ -246,12 +246,14 @@ def classify_channel_s1(channel_name, orig_group=""):
     if name_lower.startswith("usa") or "usa h" in full_text:
         return None
 
-    if "tod" in full_text:
+    # 1. باقة تود (BEIN TOD) - تطابق صورة TOD MOVIES - تود افلام
+    if any(kw in full_text for kw in ["tod", "تود"]):
         return "BEIN TOD"
 
-    if "bein" in full_text:
+    # 2. باقة بيين الميديا والرياضة
+    if any(kw in full_text for kw in ["bein", "بي ان", "بي إن"]):
         if any(kw in full_text for kw in ["fr", "france", "french", "فرنسية", "فرنسيه"]):
-            if any(kw in full_text for kw in ["bein sport", "bein sports", "h.265", "h265", "hevc"]):
+            if any(kw in full_text for kw in ["sport", "sports", "h.265", "h265", "hevc"]):
                 return "BEIN SPORT FR"
             return "FRENCH"
 
@@ -261,17 +263,69 @@ def classify_channel_s1(channel_name, orig_group=""):
             "fox", "life", "action", "bbc", "earth", "star", "world",
             "baraeam", "baraem", "براعم", "jeem", "جيم", "nat geo", "national", "wild",
             "box office", "boxoffice", "pop up", "popup", "media", "entertainment", 
-            "junior", "news", "اخبار", "أخبار", "افلام", "أفلام"
+            "junior", "news", "اخبار", "أخبار", "افلام", "أفلام", "hgtv", "starz"
         ]
         if any(kw in full_text for kw in bein_media_keywords):
             return "BEIN MEDIA"
 
-        bein_sports_triggers = ["bein sport", "bein sports", "h.265", "h265", "hevc", "4k"]
+        bein_sports_triggers = ["sport", "sports", "h.265", "h265", "hevc", "4k", "hd", "sd"]
         if any(trigger in full_text for trigger in bein_sports_triggers):
             return "BEIN SPORT AR"
-            
-        return None
 
+    # 3. باقة ام بي سي (MBC GROUP) - تطابق صورة M B C - ام بي سي و M B C VIP
+    if any(kw in full_text for kw in ["mbc", "m b c", "ام بي سي", "إم بي سي", "mpc"]):
+        return "MBC GROUP"
+
+    # 4. باقة روتانا (ROTANA) - تطابق صورة ROTANA - روتانا
+    if any(kw in full_text for kw in ["rotana", "روتانا"]):
+        return "ROTANA"
+
+    # 5. باقة اتش بي او (HBO) - تطابق صورة H B O - اتش بي او
+    if any(kw in full_text for kw in ["hbo", "h b o", "اتش بي او", "اتش بي أوا"]):
+        return "HBO"
+
+    # 6. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE) - تطابق صورة O S N و ART VIP
+    if any(kw in full_text for kw in ["osn", "o s n", "او اس ان", "أو إس إن", "box office", "boxoffice", "art", "ارتي"]):
+        return "BOX OFFICE"
+
+    # 7. باقة نتفليكس وشاهد (NETFLIX)
+    if any(kw in full_text for kw in ["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"]):
+        return "NETFLIX"
+
+    # 8. باقة أمازون برايم (AMAZON PRIME)
+    if any(kw in full_text for kw in ["amazon", "prime", "أمازون", "امازون"]):
+        return "AMAZON PRIME"
+
+    # 9. باقة شوتايم (SHOWTIME)
+    if any(kw in full_text for kw in ["showtime", "شوتايم"]):
+        return "SHOWTIME"
+
+    # 10. باقة هوم سينما (HOME CINEMA)
+    if any(kw in full_text for kw in ["home cinema", "homecinema", "هوم سينما"]):
+        return "HOME CINEMA"
+
+    # 11. باقة ام اتش (MH GROUP)
+    if any(kw in full_text for kw in ["mh", "ام اتش", "أم اتش"]):
+        return "MH GROUP"
+
+    # 12. تصفية الوثائقية (DOCUMENTARY) - تطابق صورة DOCUMENTARY - وثائقي
+    doc_keywords = ["documentary", "وثائقي", "وثائقية", "nat geo", "national geo", "discovery", "history", "animal planet", "ushuaia", "histoire", "science", "alwathiqia"]
+    if any(kw in full_text for kw in doc_keywords):
+        foreign_doc_tags = ["al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "de:", "uk:", "es:", "it:", "tr:", "ru:", "pl:", "bg:", "cz:", "hu:", "ro:", "dk:", "us:"]
+        if not any(foreign in full_text for foreign in foreign_doc_tags):
+            return "DOCUMENTARY"
+
+    # 13. تصفية القنوات الفرنسية (FRENCH) - تطابق صورة FRANCE - فرنسا
+    french_tags = ["france", "فرنسا", "fr:", "fr ", "(fr)", "[fr]", "fr|", "fr |", "fr-", "fr_", "french"]
+    french_kw = [
+        "tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
+        "ocs", "cine", "ciné", "w9", "tmc", "tfx", "gulli", "tiji", "france 2", 
+        "france 3", "france 4", "france 5", "france 24", "bfm", "planete", "animaux"
+    ]
+    if any(tag in full_text for tag in french_tags) or any(kw in full_text for kw in french_kw):
+        return "FRENCH"
+
+    # 14. تصفية الأخبار (ARABIC NEWS)
     if any(kw in full_text for kw in ["al jazeera", "aljazeera", "الجزيرة", "al arabiya", "alarabiya", "العربية", "al hadath", "alhadath", "الحدث", "sky news", "سكاي نيوز"]):
         if "sky" in full_text:
             if any(ar in full_text for ar in ["arabic", "arabia", "عرب", "عربية", "سكاي نيوز"]):
@@ -279,6 +333,7 @@ def classify_channel_s1(channel_name, orig_group=""):
         else:
             return "ARABIC NEWS"
 
+    # 15. تصفية الأطفال (KIDS)
     kids_ar_kw = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري", "masha", "ماشا", 
         "dora", "دورا", "spacetoon", "سبيستون", "سبيس تون", "wanasat", "وناسة", 
@@ -286,67 +341,27 @@ def classify_channel_s1(channel_name, orig_group=""):
         "تلفزيون جيم", "قناة جيم", "اطفال", "أطفال"
     ]
     kids_fr_kw = ["gulli", "tiji", "disney kids", "nickelodeon", "boing", "piwi", "cartoon network fr"]
-    if any(kw in full_text for kw in kids_ar_kw) or any(kw in full_text for kw in kids_fr_kw):
+    if any(kw in full_text for kw in kids_ar_kw) or any(kw in name_lower for kw in kids_fr_kw):
         return "KIDS"
 
-    doc_keywords = ["nat geo", "national geo", "discovery", "documentary", "documentaire", "الوثائقية", "وثائقية", "ushuaia", "histoire", "science", "doc"]
-    if any(kw in full_text for kw in doc_keywords):
-        foreign_doc_tags = ["al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "de:", "uk:", "es:", "it:", "tr:", "ru:", "pl:", "bg:", "cz:", "hu:", "ro:", "dk:", "us:"]
-        if not any(foreign in full_text for foreign in foreign_doc_tags):
-            return "DOCUMENTARY"
-
-    french_tags = ["fr:", "fr ", "(fr)", "[fr]", "fr|", "fr |", "fr-", "fr -", "france", "french"]
-    french_kw = [
-        "tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
-        "ocs", "cine", "ciné", "w9", "tmc", "tfx", "gulli", "tiji", "france 2", 
-        "france 3", "france 4", "france 5", "france 24", "bfm"
+    # 16. الجزائر (ALGERIA) - تطابق صورة ALGERIA - الجزائر
+    algeria_keywords = [
+        "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
+        "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
+        "ennahar", "samira", "سميرة", "numidia", "نوميديا", "الوطنية", "el watania", "al24", "dz -", "alg:"
     ]
-    if any(tag in full_text for tag in french_tags) or any(kw in full_text for kw in french_kw):
-        return "FRENCH"
+    if any(kw in full_text for kw in algeria_keywords):
+        return "ALGERIA"
 
+    # 17. ألوان سبورت وألوان سينما والفجر
     if any(kw in full_text for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
         return "ALWAN SPORT"
 
     if "fajer" in full_text or "الفجر" in full_text:
         return "AL FAJER"
 
-    algeria_keywords = [
-        "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
-        "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
-        "ennahar", "samira", "سميرة", "numidia", "نوميديا", "الوطنية", "el watania", "al24"
-    ]
-    if any(kw in full_text for kw in algeria_keywords):
-        return "ALGERIA"
-
     if "alwan" in full_text or "ألوان" in full_text or "الوان" in full_text:
         return "ALWAN MOVIES"
-
-    if "rotana" in full_text or "روتانا" in full_text:
-        return "ROTANA"
-
-    if "mbc" in full_text or "ام بي سي" in full_text or "إم بي سي" in full_text:
-        return "MBC GROUP"
-
-    if any(kw in full_text for kw in ["box office", "boxoffice", "box-office", "بوكس أوفيس", "بوكس اوفيس"]):
-        return "BOX OFFICE"
-
-    if any(kw in full_text for kw in ["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"]):
-        return "NETFLIX"
-
-    if any(kw in full_text for kw in ["amazon", "prime", "أمازون", "امازون"]):
-        return "AMAZON PRIME"
-
-    if "hbo" in full_text:
-        return "HBO"
-
-    if any(kw in full_text for kw in ["showtime", "شوتايم"]):
-        return "SHOWTIME"
-
-    if any(kw in full_text for kw in ["home cinema", "homecinema", "هوم سينما", "هومسينما"]):
-        return "HOME CINEMA"
-
-    if any(kw in full_text for kw in ["mh", "ام اتش", "أم اتش"]):
-        return "MH GROUP"
 
     return None
 
@@ -427,7 +442,7 @@ def process_m3u_s1(m3u_text):
 
 
 # ==============================================================================
-# SECTION C: جلب ومعالجة المصدرين بشكل منفصل
+# SECTION C: جلب ومعالجة المصدرين بشكل منفصل ومستقل
 # ==============================================================================
 def fetch_and_process_app2(session):
     target_url = APP2_M3U_URL.replace("output=m3u8", "output=ts")
@@ -531,11 +546,11 @@ def update_specific_gist(session, gist_id, page_label, content, total_count):
 def main():
     session = create_session()
 
-    # 1. تنفيذ المسار الأول (APP2 القديم -> تحديث kz.m3u بالسكربت الأصلي)
+    # 1. تنفيذ المسار الأول (APP2 القديم -> تحديث kz.m3u بالسكربت الأصلي دون مساس)
     kz_content, kz_count = fetch_and_process_app2(session)
     update_specific_gist(session, GIST_KZ_ID, "kz.m3u", kz_content, kz_count)
 
-    # 2. تنفيذ المسار الثاني (Wan+ الجديد -> تحديث s1.m3u بالدالة الذكية)
+    # 2. تنفيذ المسار الثاني (Wan+ الجديد -> تحديث s1.m3u)
     s1_content, s1_count = fetch_and_process_wanplus(session)
     update_specific_gist(session, GIST_S1_ID, "s1.m3u", s1_content, s1_count)
 
