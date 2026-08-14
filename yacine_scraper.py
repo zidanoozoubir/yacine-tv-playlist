@@ -46,6 +46,19 @@ def match_exact_word(kw, text):
 def has_word(kw_list, text):
     return any(match_exact_word(kw, text) for kw in kw_list)
 
+# 🛠️ كاشف واستبعاد المسلسلات والحلقات والتايم شفت لصفحة s1.m3u
+def is_vod_or_timeshift(text):
+    t = text.lower()
+    # كشف صياغة الحلقات والمواسم مثل: S01 E01, S02E23, S01, E01...
+    if re.search(r'\bs\d{1,2}\s*e\d{1,2}\b', t):
+        return True
+    if re.search(r'\bs\d{2}\b', t) or re.search(r'\be\d{2}\b', t):
+        return True
+    # كشف قنوات التبديل والتأخير الزمني مثل: -2h, -4h, -6h, -8h, -10h, -12h, +1h...
+    if re.search(r'[-+]\d{1,2}h\b', t) or "timeshift" in t or "time shift" in t:
+        return True
+    return False
+
 
 # ==============================================================================
 # SECTION A: كود ودالة صفحة kz.m3u الأصلية القديمة (بدون أي تعديل أو مساس إطلاقاً)
@@ -246,7 +259,7 @@ def process_m3u_kz(m3u_text):
 
 
 # ==============================================================================
-# SECTION B: كود التصفية بالمطابقة الدقيقة الشاملة المخصص لصفحة s1.m3u (وان+)
+# SECTION B: كود التصفية الصارمة الدقيقة المخصص لصفحة s1.m3u (وان+)
 # ==============================================================================
 EXCLUDE_TAGS_S1 = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro", "vip pt", "vip nl", "vip se", "vip no", "vip al",
@@ -261,18 +274,22 @@ def classify_channel_s1(channel_name, orig_group=""):
     full_text = f"{channel_name} {orig_group}".lower().strip()
     name_lower = channel_name.lower().strip()
 
-    # 1. استبعاد التاجات واللغات الأجنبية
+    # 1. 🛠️ استبعاد المسلسلات والحلقات وقنوات الإعادة التايم شفت فوراً
+    if is_vod_or_timeshift(full_text):
+        return None
+
+    # 2. استبعاد الدولة أو اللغات الأجنبية
     if any(tag in full_text for tag in EXCLUDE_TAGS_S1):
         return None
 
     if name_lower.startswith("usa") or "usa h" in full_text:
         return None
 
-    # 2. 🛠️ باقة تود (BEIN TOD) - مطابقة كلمة TOD ككلمة مستقلة فقط دون الاقتراب من TODAY
+    # 3. باقة تود (BEIN TOD)
     if has_word(["tod", "تود"], full_text) and "today" not in full_text:
         return "BEIN TOD"
 
-    # 3. باقة بيين سبورت
+    # 4. باقة بيين سبورت
     if has_word(["bein", "بي ان", "بي إن"], full_text):
         if has_word(["fr", "france", "french", "فرنسية", "فرنسيه"], full_text):
             if has_word(["sport", "sports", "h.265", "h265", "hevc"], full_text):
@@ -294,51 +311,52 @@ def classify_channel_s1(channel_name, orig_group=""):
         if has_word(bein_sports_triggers, full_text):
             return "BEIN SPORT AR"
 
-    # 4. باقة ام بي سي (MBC GROUP)
-    if has_word(["mbc", "m b c", "ام بي سي", "إم بي سي", "mpc"], full_text):
-        return "MBC GROUP"
-
-    # 5. باقة روتانا (ROTANA)
-    if has_word(["rotana", "روتانا"], full_text):
-        return "ROTANA"
-
-    # 6. باقة اتش بي او (HBO)
-    if has_word(["hbo", "h b o", "اتش بي او", "اتش بي أوا"], full_text):
-        return "HBO"
-
-    # 7. باقة الوان سبورت (ALWAN SPORT)
+    # 5. 🛠️ باقة ألوان سبورت (ALWAN SPORT)
     if has_word(["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"], full_text):
         return "ALWAN SPORT"
 
-    # 8. باقة الوان افلام (ALWAN MOVIES)
-    if has_word(["alwan", "ألوان", "الوان"], full_text):
+    # 6. 🛠️ باقة ألوان أفلام (ALWAN MOVIES) - حصرها فقط في القنوات التي تحمل اسم ALWAN MOVIES / CINEMA صراحة
+    alwan_movies_kw = ["alwan movie", "alwan movies", "alwan cinema", "alwan film", "alwan aflam", "ألوان أفلام", "الوان افلام", "ألوان سينما", "الوان سينما"]
+    if has_word(alwan_movies_kw, full_text):
         return "ALWAN MOVIES"
 
-    # 9. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE)
+    # 7. باقة ام بي سي (MBC GROUP) - تشمل MBC 3 للبث المباشر
+    if has_word(["mbc", "m b c", "ام بي سي", "إم بي سي", "mpc"], full_text):
+        return "MBC GROUP"
+
+    # 8. باقة روتانا (ROTANA)
+    if has_word(["rotana", "روتانا"], full_text):
+        return "ROTANA"
+
+    # 9. باقة اتش بي او (HBO)
+    if has_word(["hbo", "h b o", "اتش بي او", "اتش بي أوا"], full_text):
+        return "HBO"
+
+    # 10. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE)
     if has_word(["osn", "o s n", "او اس ان", "أو إس إن", "box office", "boxoffice", "art", "ارتي", "أرتي"], full_text):
         return "BOX OFFICE"
 
-    # 10. باقة نتفليكس وشاهد (NETFLIX)
+    # 11. باقة نتفليكس وشاهد (NETFLIX)
     if has_word(["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"], full_text):
         return "NETFLIX"
 
-    # 11. باقة أمازون برايم (AMAZON PRIME)
+    # 12. باقة أمازون برايم (AMAZON PRIME)
     if has_word(["amazon", "prime", "أمازون", "امازون"], full_text):
         return "AMAZON PRIME"
 
-    # 12. باقة شوتايم (SHOWTIME)
+    # 13. باقة شوتايم (SHOWTIME)
     if has_word(["showtime", "شوتايم"], full_text):
         return "SHOWTIME"
 
-    # 13. باقة هوم سينما (HOME CINEMA)
+    # 14. باقة هوم سينما (HOME CINEMA)
     if has_word(["home cinema", "homecinema", "هوم سينما"], full_text):
         return "HOME CINEMA"
 
-    # 14. باقة ام اتش (MH GROUP)
+    # 15. باقة ام اتش (MH GROUP)
     if has_word(["mh", "ام اتش", "أم اتش"], full_text):
         return "MH GROUP"
 
-    # 15. 🛠️ تصفية الأطفال الصارمة جداً لـ s1.m3u (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية)
+    # 16. 🛠️ تصفية الأطفال المباشرة لـ s1.m3u (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية)
     kids_strict_kw = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري",
         "masha", "ماشا", "دب",
@@ -347,22 +365,15 @@ def classify_channel_s1(channel_name, orig_group=""):
         "cartoon network", "cn arabia", "كرتون نتورك" # إضافـة كرتون نتورك العربية
     ]
     if has_word(kids_strict_kw, full_text):
-        return "KIDS"
+        if "en" not in full_text and "english" not in full_text:
+            return "KIDS"
 
-    # 16. تصفية الوثائقية (DOCUMENTARY)
+    # 17. تصفية الوثائقية (DOCUMENTARY)
     doc_keywords = ["documentary", "وثائقي", "وثائقية", "nat geo", "national geo", "discovery", "history", "animal planet", "ushuaia", "histoire", "science", "alwathiqia"]
     if has_word(doc_keywords, full_text):
         foreign_doc_tags = ["al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "de:", "uk:", "es:", "it:", "tr:", "ru:", "pl:", "bg:", "cz:", "hu:", "ro:", "dk:", "us:"]
         if not any(foreign in full_text for foreign in foreign_doc_tags):
             return "DOCUMENTARY"
-
-    # 17. تصفية الأخبار (ARABIC NEWS)
-    if has_word(["al jazeera", "aljazeera", "الجزيرة", "al arabiya", "alarabiya", "العربية", "al hadath", "alhadath", "الحدث", "sky news", "سكاي نيوز"], full_text):
-        if "sky" in full_text:
-            if has_word(["arabic", "arabia", "عرب", "عربية", "سكاي نيوز"], full_text):
-                return "ARABIC NEWS"
-        else:
-            return "ARABIC NEWS"
 
     # 18. الجزائر (ALGERIA)
     algeria_keywords = [
@@ -387,6 +398,7 @@ def classify_channel_s1(channel_name, orig_group=""):
     if any(tag in full_text for tag in french_tags) or has_word(french_kw, full_text):
         return "FRENCH"
 
+    # 🚫 تم إزالة ARABIC NEWS بالكامل وتصفية كل القنوات الغريبة!
     return None
 
 PREFERRED_ORDER_S1 = [
@@ -398,7 +410,6 @@ PREFERRED_ORDER_S1 = [
     "AL FAJER", 
     "KIDS", 
     "ALGERIA", 
-    "ARABIC NEWS", 
     "ALWAN MOVIES", 
     "ROTANA", 
     "MBC GROUP", 
@@ -479,7 +490,7 @@ def fetch_and_process_app2(session):
     return None, 0
 
 def fetch_and_process_wanplus(session):
-    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) بـ التصفية الصارمة الدقيقة لـ s1.m3u...")
+    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) لصفحة s1.m3u مع تخفيف الحجم واستبعاد VOD...")
     api_params = {"code": ACTIVATION_CODE}
     api_headers = {
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)",
@@ -568,7 +579,7 @@ def main():
     kz_content, kz_count = fetch_and_process_app2(session)
     update_specific_gist(session, GIST_KZ_ID, "kz.m3u", kz_content, kz_count)
 
-    # 2. تنفيذ المسار الثاني (Wan+ الجديد -> تحديث s1.m3u)
+    # 2. تنفيذ المسار الثاني (Wan+ الجديد -> تحديث s1.m3u بالتصفية الدقيقة للكلمات المستقلة)
     s1_content, s1_count = fetch_and_process_wanplus(session)
     update_specific_gist(session, GIST_S1_ID, "s1.m3u", s1_content, s1_count)
 
