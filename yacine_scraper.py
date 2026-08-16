@@ -148,7 +148,7 @@ def classify_channel_kz(channel_name):
     if any(kw in name_lower for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
         return "ALWAN SPORT"
 
-    if any(kw in name_lower for kw in ["fajer", "fadjr", "fadjir", "fajr", "الفجر", "فجر"]):
+    if "fajer" in name_lower or "الفجر" in name_lower:
         return "AL FAJER"
 
     algeria_keywords = [
@@ -322,8 +322,8 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if has_word(["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"], full_text):
         return "ALWAN SPORT"
 
-    # 6. 🛠️ باقة الفجر (AL FAJER) - توسيع الكاشف ليشمل جميع الصيغ الإملائية
-    if has_word(["fajer", "fadjr", "fadjir", "fajr", "الفجر", "فجر"], full_text):
+    # 6. 🛠️ باقة الفجر الرياضية (AL FAJER) - تشمل ALFAJER و AL FAJER SPORTS الموضحة في صور التطبيق
+    if has_word(["fajer", "alfajer", "fadjr", "fadjir", "fajr", "الفجر", "فجر"], full_text):
         return "AL FAJER"
 
     # 7. باقة ألوان أفلام (ALWAN MOVIES)
@@ -343,12 +343,12 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if has_word(["hbo", "h b o", "اتش بي او", "اتش بي أوا"], full_text):
         return "HBO"
 
-    # 11. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE)
+    # 11. 🛠️ باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE) - تصنيف كافة قنوات OSN الـ 53 الموضحة بالصورة
     if has_word(["osn", "o s n", "او اس ان", "أو إس إن", "box office", "boxoffice", "art", "ارتي", "أرتي"], full_text):
         return "BOX OFFICE"
 
-    # 12. باقة نتفليكس وشاهد (NETFLIX)
-    if has_word(["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"], full_text):
+    # 12. 🛠️ باقة نتفليكس وشاهد (NETFLIX) - تصنيف كافة قنوات NETFLIX الـ 29 الموضحة بالصورة
+    if has_word(["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"], full_text) or "net |" in full_text:
         return "NETFLIX"
 
     # 13. باقة أمازون برايم (AMAZON PRIME)
@@ -367,7 +367,7 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if has_word(["mh", "ام اتش", "أم اتش"], full_text):
         return "MH GROUP"
 
-    # 17. تصفية الأطفال المباشرة (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية)
+    # 17. 🛠️ تصفية الأطفال المباشرة (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية) مع حظر القنوات اليمنية من باقة الأطفال
     kids_strict_kw = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري",
         "masha", "ماشا", "دب",
@@ -376,10 +376,12 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
         "cartoon network", "cn arabia", "كرتون نتورك"
     ]
     if has_word(kids_strict_kw, full_text):
-        if "en" not in full_text and "english" not in full_text:
-            return "KIDS"
+        # استبعاد أي قناة يمنية تسربت لباقة الأطفال
+        if "yemen" not in full_text and "اليمن" not in full_text:
+            if "en" not in full_text and "english" not in full_text:
+                return "KIDS"
 
-    # 18. تصفية الوثائقية الصارمة مع حظر القنوات المطلوبة المحددة بـ doku, bg, cz, allente, in-tm, movistar
+    # 18. 🛠️ تصفية الوثائقية الصارمة (تشمل قناة اليمن الوثائقية المحددة)
     exact_doc_triggers = [
         "nat geo wild", "national geo wild", "ad nat geo", "الجزيرة الوثائقية", "al jazeera documentary",
         "aljazeera documentary", "وثائقية", "وثائقي", "alwathiqia", "alwathafeqia", "discovery",
@@ -507,7 +509,7 @@ def fetch_and_process_app2(session):
     return None, 0
 
 def fetch_and_process_wanplus(session):
-    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) وجلب قنوات الفجر وبقية الباقات...")
+    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) بـ الكواشف المحدثة من شاشات التلفزيون لـ s1.m3u...")
     api_params = {"code": ACTIVATION_CODE}
     api_headers = {
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)",
@@ -603,4 +605,4 @@ def main():
     print("\n✨ تم الانتهاء من تنفيذ السكربت الموحد بنجاح تام لجميع الصفحات!")
 
 if __name__ == "__main__":
-    main()        
+    main()
