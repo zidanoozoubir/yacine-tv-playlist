@@ -36,28 +36,41 @@ def create_session():
     return session
 
 # ==========================================
-# محرك المطابقة الدقيقة الشامل للكلمات المستقلة (Word Boundaries)
+# محرك المطابقة الدقيقة للكلمات المستقلة
 # ==========================================
 def match_exact_word(kw, text):
-    """تتأكد من مطابقة الكلمة كـ كلمة مستقلة فقط وتمنع المطابقة الجزئية داخل الكلمات الأخرى"""
     pattern = r'\b' + re.escape(kw.lower()) + r'\b'
     return bool(re.search(pattern, text.lower()))
 
 def has_word(kw_list, text):
     return any(match_exact_word(kw, text) for kw in kw_list)
 
-# 🛠️ كاشف واستبعاد المسلسلات والحلقات والتايم شفت لصفحة s1.m3u
-def is_vod_or_timeshift(text):
-    t = text.lower()
-    # كشف صياغة الحلقات والمواسم مثل: S01 E01, S02E23, S01, E01...
-    if re.search(r'\bs\d{1,2}\s*e\d{1,2}\b', t):
-        return True
-    if re.search(r'\bs\d{2}\b', t) or re.search(r'\be\d{2}\b', t):
-        return True
-    # كشف قنوات التبديل والتأخير الزمني مثل: -2h, -4h, -6h, -8h, -10h, -12h, +1h...
+# 🛠️ كاشف واستبعاد الأفلام والمسلسلات والمقاطع وقنوات التايم شفت لـ s1.m3u
+def is_live_stream_only(url, title):
+    u = url.lower().strip()
+    t = title.lower().strip()
+
+    # 1. فحص مسار الرابط: يجب أن يكون بَث كنع حي (/live/) وليس مسار فيلم أو مسلسل
+    if "/movie/" in u or "/series/" in u or u.endswith(".mp4") or u.endswith(".mkv") or u.endswith(".avi"):
+        return False
+    if "/live/" not in u and "/live//" not in u:
+        return False
+
+    # 2. كشف الحلقات والمواسم VOD مثل: S01 E01, S02E23, S01, E01, Ep 1, Part 1...
+    if re.search(r'\bs\d{1,2}\s*e\d{1,2}\b', t) or re.search(r'\bs\d{2}\b', t) or re.search(r'\be\d{2}\b', t):
+        return False
+    if re.search(r'\b(season|episode|part|ep)\s*\d+\b', t):
+        return False
+
+    # 3. كشف مقاطع الفيديو الأرشيفية المتراتبة مثل: "Tom and Jerry 1", "Tom and Jerry 2"...
+    if re.search(r'\b(tom\s*and\s*jerry|tiki|masha)\s+\d+\b', t):
+        return False
+
+    # 4. كشف قنوات التأخير والتبديل الزمني مثل: -2h, -4h, -6h, -8h, -10h, -12h, +1h...
     if re.search(r'[-+]\d{1,2}h\b', t) or "timeshift" in t or "time shift" in t:
-        return True
-    return False
+        return False
+
+    return True
 
 
 # ==============================================================================
@@ -259,7 +272,7 @@ def process_m3u_kz(m3u_text):
 
 
 # ==============================================================================
-# SECTION B: كود التصفية الصارمة الدقيقة المخصص لصفحة s1.m3u (وان+)
+# SECTION B: كود التصفية الصارمة مع حظر VOD المخصص لصفحة s1.m3u (وان+)
 # ==============================================================================
 EXCLUDE_TAGS_S1 = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro", "vip pt", "vip nl", "vip se", "vip no", "vip al",
@@ -270,12 +283,14 @@ EXCLUDE_TAGS_S1 = [
     "china", "christian", "cine mania india", "cine mania usa", "cric life", "cricket", "denmark", "ethiopia", "finland", "germany", "greece", "india", "malaysia", "nepal", "pakistan", "poland", "portugal", "romania", "russia", "thailand", "turkey", "vietnam"
 ]
 
-def classify_channel_s1(channel_name, orig_group=""):
+def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     full_text = f"{channel_name} {orig_group}".lower().strip()
     name_lower = channel_name.lower().strip()
 
-    # 1. 🛠️ استبعاد المسلسلات والحلقات وقنوات الإعادة التايم شفت فوراً
-    if is_vod_or_timeshift(full_text):
+    # 1. 🛠️ حظر واستبعاد مسارات الأفلام والمسلسلات والحلقات VOD والتايم شفت
+    if is_live_stream_only(stream_url, channel_name):
+        pass
+    else:
         return None
 
     # 2. استبعاد الدولة أو اللغات الأجنبية
@@ -315,12 +330,12 @@ def classify_channel_s1(channel_name, orig_group=""):
     if has_word(["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"], full_text):
         return "ALWAN SPORT"
 
-    # 6. 🛠️ باقة ألوان أفلام (ALWAN MOVIES) - حصرها فقط في القنوات التي تحمل اسم ALWAN MOVIES / CINEMA صراحة
+    # 6. 🛠️ باقة ألوان أفلام (ALWAN MOVIES) - حصراً للقنوات التي تحمل اسم ALWAN MOVIES / CINEMA
     alwan_movies_kw = ["alwan movie", "alwan movies", "alwan cinema", "alwan film", "alwan aflam", "ألوان أفلام", "الوان افلام", "ألوان سينما", "الوان سينما"]
     if has_word(alwan_movies_kw, full_text):
         return "ALWAN MOVIES"
 
-    # 7. باقة ام بي سي (MBC GROUP) - تشمل MBC 3 للبث المباشر
+    # 7. باقة ام بي سي (MBC GROUP) - تشمل MBC 3 المباشرة
     if has_word(["mbc", "m b c", "ام بي سي", "إم بي سي", "mpc"], full_text):
         return "MBC GROUP"
 
@@ -356,13 +371,13 @@ def classify_channel_s1(channel_name, orig_group=""):
     if has_word(["mh", "ام اتش", "أم اتش"], full_text):
         return "MH GROUP"
 
-    # 16. 🛠️ تصفية الأطفال المباشرة لـ s1.m3u (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية)
+    # 16. 🛠️ تصفية الأطفال المباشرة (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية، ام بي سي 3)
     kids_strict_kw = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري",
         "masha", "ماشا", "دب",
         "spacetoon", "سبيستون", "سبيس تون",
         "baraem", "براعم",
-        "cartoon network", "cn arabia", "كرتون نتورك" # إضافـة كرتون نتورك العربية
+        "cartoon network", "cn arabia", "كرتون نتورك" # كرتون نتورك العربية
     ]
     if has_word(kids_strict_kw, full_text):
         if "en" not in full_text and "english" not in full_text:
@@ -398,7 +413,7 @@ def classify_channel_s1(channel_name, orig_group=""):
     if any(tag in full_text for tag in french_tags) or has_word(french_kw, full_text):
         return "FRENCH"
 
-    # 🚫 تم إزالة ARABIC NEWS بالكامل وتصفية كل القنوات الغريبة!
+    # 🚫 تم حذف ARABIC NEWS تماماً!
     return None
 
 PREFERRED_ORDER_S1 = [
@@ -445,13 +460,14 @@ def process_m3u_s1(m3u_text):
                 if 'group-title="' in current_extinf:
                     orig_group = current_extinf.split('group-title="')[1].split('"')[0]
 
-                group_title = classify_channel_s1(channel_name, orig_group)
+                final_url = line_str.replace(".m3u8", ".ts")
+
+                # الفحص باستبعاد الأفلام والمسلسلات برمجياً والتحقق من سريان البث الحي فقط
+                group_title = classify_channel_s1(channel_name, orig_group, final_url)
                 if group_title:
                     logo = ""
                     if 'tvg-logo="' in current_extinf:
                         logo = current_extinf.split('tvg-logo="')[1].split('"')[0]
-
-                    final_url = line_str.replace(".m3u8", ".ts")
 
                     if final_url in seen_urls:
                         continue
@@ -490,7 +506,7 @@ def fetch_and_process_app2(session):
     return None, 0
 
 def fetch_and_process_wanplus(session):
-    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) لصفحة s1.m3u مع تخفيف الحجم واستبعاد VOD...")
+    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) بـ الفلترة الفائقة لـ s1.m3u...")
     api_params = {"code": ACTIVATION_CODE}
     api_headers = {
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)",
@@ -579,7 +595,7 @@ def main():
     kz_content, kz_count = fetch_and_process_app2(session)
     update_specific_gist(session, GIST_KZ_ID, "kz.m3u", kz_content, kz_count)
 
-    # 2. تنفيذ المسار الثاني (Wan+ الجديد -> تحديث s1.m3u بالتصفية الدقيقة للكلمات المستقلة)
+    # 2. تنفيذ المسار الثاني (Wan+ الجديد -> تحديث s1.m3u)
     s1_content, s1_count = fetch_and_process_wanplus(session)
     update_specific_gist(session, GIST_S1_ID, "s1.m3u", s1_content, s1_count)
 
