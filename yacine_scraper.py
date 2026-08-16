@@ -52,8 +52,6 @@ def is_live_stream_only(url, title):
 
     if "/movie/" in u or "/series/" in u or u.endswith(".mp4") or u.endswith(".mkv") or u.endswith(".avi"):
         return False
-    if "/live/" not in u and "/live//" not in u:
-        return False
 
     if re.search(r'\bs\d{1,2}\s*e\d{1,2}\b', t) or re.search(r'\bs\d{2}\b', t) or re.search(r'\be\d{2}\b', t):
         return False
@@ -150,7 +148,7 @@ def classify_channel_kz(channel_name):
     if any(kw in name_lower for kw in ["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"]):
         return "ALWAN SPORT"
 
-    if "fajer" in name_lower or "الفجر" in name_lower:
+    if any(kw in name_lower for kw in ["fajer", "fadjr", "fadjir", "fajr", "الفجر", "فجر"]):
         return "AL FAJER"
 
     algeria_keywords = [
@@ -324,48 +322,52 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if has_word(["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"], full_text):
         return "ALWAN SPORT"
 
-    # 6. باقة ألوان أفلام (ALWAN MOVIES)
+    # 6. 🛠️ باقة الفجر (AL FAJER) - توسيع الكاشف ليشمل جميع الصيغ الإملائية
+    if has_word(["fajer", "fadjr", "fadjir", "fajr", "الفجر", "فجر"], full_text):
+        return "AL FAJER"
+
+    # 7. باقة ألوان أفلام (ALWAN MOVIES)
     alwan_movies_kw = ["alwan movie", "alwan movies", "alwan cinema", "alwan film", "alwan aflam", "ألوان أفلام", "الوان افلام", "ألوان سينما", "الوان سينما"]
     if has_word(alwan_movies_kw, full_text):
         return "ALWAN MOVIES"
 
-    # 7. باقة ام بي سي (MBC GROUP)
+    # 8. باقة ام بي سي (MBC GROUP)
     if has_word(["mbc", "m b c", "ام بي سي", "إم بي سي", "mpc"], full_text):
         return "MBC GROUP"
 
-    # 8. باقة روتانا (ROTANA)
+    # 9. باقة روتانا (ROTANA)
     if has_word(["rotana", "روتانا"], full_text):
         return "ROTANA"
 
-    # 9. باقة اتش بي او (HBO)
+    # 10. باقة اتش بي او (HBO)
     if has_word(["hbo", "h b o", "اتش بي او", "اتش بي أوا"], full_text):
         return "HBO"
 
-    # 10. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE)
+    # 11. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE)
     if has_word(["osn", "o s n", "او اس ان", "أو إس إن", "box office", "boxoffice", "art", "ارتي", "أرتي"], full_text):
         return "BOX OFFICE"
 
-    # 11. باقة نتفليكس وشاهد (NETFLIX)
+    # 12. باقة نتفليكس وشاهد (NETFLIX)
     if has_word(["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"], full_text):
         return "NETFLIX"
 
-    # 12. باقة أمازون برايم (AMAZON PRIME)
+    # 13. باقة أمازون برايم (AMAZON PRIME)
     if has_word(["amazon", "prime", "أمازون", "امازون"], full_text):
         return "AMAZON PRIME"
 
-    # 13. باقة شوتايم (SHOWTIME)
+    # 14. باقة شوتايم (SHOWTIME)
     if has_word(["showtime", "شوتايم"], full_text):
         return "SHOWTIME"
 
-    # 14. باقة هوم سينما (HOME CINEMA)
+    # 15. باقة هوم سينما (HOME CINEMA)
     if has_word(["home cinema", "homecinema", "هوم سينما"], full_text):
         return "HOME CINEMA"
 
-    # 15. باقة ام اتش (MH GROUP)
+    # 16. باقة ام اتش (MH GROUP)
     if has_word(["mh", "ام اتش", "أم اتش"], full_text):
         return "MH GROUP"
 
-    # 16. تصفية الأطفال المباشرة (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية)
+    # 17. تصفية الأطفال المباشرة (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية)
     kids_strict_kw = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري",
         "masha", "ماشا", "دب",
@@ -377,7 +379,7 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
         if "en" not in full_text and "english" not in full_text:
             return "KIDS"
 
-    # 17. 🛠️ تصفية الوثائقية الصارمة مع حظر القنوات المطلوبة المحددة بـ doku, bg, cz, allente, in-tm, movistar
+    # 18. تصفية الوثائقية الصارمة مع حظر القنوات المطلوبة المحددة بـ doku, bg, cz, allente, in-tm, movistar
     exact_doc_triggers = [
         "nat geo wild", "national geo wild", "ad nat geo", "الجزيرة الوثائقية", "al jazeera documentary",
         "aljazeera documentary", "وثائقية", "وثائقي", "alwathiqia", "alwathafeqia", "discovery",
@@ -392,7 +394,7 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
         if not any(ex in full_text for ex in doc_exclude_words):
             return "DOCUMENTARY"
 
-    # 18. الجزائر (ALGERIA)
+    # 19. الجزائر (ALGERIA)
     algeria_keywords = [
         "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
         "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
@@ -400,10 +402,6 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     ]
     if has_word(algeria_keywords, full_text):
         return "ALGERIA"
-
-    # 19. الفجر (AL FAJER)
-    if has_word(["fajer", "الفجر"], full_text):
-        return "AL FAJER"
 
     # 20. القنوات الفرنسية (FRENCH)
     french_tags = ["france", "فرنسا", "fr:", "fr ", "(fr)", "[fr]", "fr|", "fr |", "fr-", "fr_", "french"]
@@ -509,7 +507,7 @@ def fetch_and_process_app2(session):
     return None, 0
 
 def fetch_and_process_wanplus(session):
-    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) لصفحة s1.m3u مع استبعاد doku, bg, cz, allente, in-tm, movistar...")
+    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) وجلب قنوات الفجر وبقية الباقات...")
     api_params = {"code": ACTIVATION_CODE}
     api_headers = {
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)",
@@ -605,4 +603,4 @@ def main():
     print("\n✨ تم الانتهاء من تنفيذ السكربت الموحد بنجاح تام لجميع الصفحات!")
 
 if __name__ == "__main__":
-    main()
+    main()        
