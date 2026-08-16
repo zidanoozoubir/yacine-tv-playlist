@@ -268,10 +268,11 @@ def process_m3u_kz(m3u_text):
 # ==============================================================================
 # SECTION B: كود التصفية الصارمة الدقيقة المخصص لصفحة s1.m3u (وان+)
 # ==============================================================================
+# 🛠️ تم إزالة "al:" من التاجات المستبعدة لمنع حذف كلمة ALFAJER
 EXCLUDE_TAGS_S1 = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro", "vip pt", "vip nl", "vip se", "vip no", "vip al",
-    "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "fi:", "gr:", "ex-yu:", "ex yu:", "sk:", "in:", "pk:", "bd:", "af:", "ir:", "he:", "sr:", "hr:", "ba:", "mk:", "si:",
-    " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ", " al ", " pt ", " nl ", " il ", " so ", " no ", " se ",
+    "de:", "uk:", "ru:", "bg:", "pl:", "es:", "ca:", "tr:", "ph:", "au:", "cz:", "usa:", "it:", "br:", "hu:", "us:", "ro:", "dk:", "usa)", "pt:", "nl:", "il:", "so:", "no:", "se:", "fi:", "gr:", "ex-yu:", "ex yu:", "sk:", "in:", "pk:", "bd:", "af:", "ir:", "he:", "sr:", "hr:", "ba:", "mk:", "si:",
+    " de ", " uk ", " ru ", " bg ", " pl ", " es ", " ca ", " tr ", " ph ", " au ", " cz ", " usa ", " it ", " br ", " hu ", " us ", " ro ", " dk ", " pt ", " nl ", " il ", " so ", " no ", " se ",
     "[de]", "[uk]", "[ru]", "[bg]", "[pl]", "[es]", "[ca]", "[tr]", "[ph]", "[au]", "[cz]", "[usa]", "[it]", "[br]", "[hu]", "[us]", "[ro]", "[dk]", "[al]", "[pt]", "[nl]", "[il]", "[so]", "[no]", "[se]",
     "(de)", "(uk)", "(ru)", "(bg)", "(pl)", "(es)", "(ca)", "(tr)", "(ph)", "(au)", "(cz)", "(usa)", "(it)", "(br)", "(hu)", "(us)", "(ro)", "(dk)", "(al)", "(pt)", "(nl)", "(il)", "(so)", "(no)", "(se)",
     "china", "christian", "cine mania india", "cine mania usa", "cric life", "cricket", "denmark", "ethiopia", "finland", "germany", "greece", "india", "malaysia", "nepal", "pakistan", "poland", "portugal", "romania", "russia", "thailand", "turkey", "vietnam"
@@ -281,7 +282,6 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     full_text = f"{channel_name} {orig_group}".lower().strip()
     name_lower = channel_name.lower().strip()
     
-    # نص موحد ومنظف بدون مسافات أو رموز لإزالة أخطاء التباعد
     clean_text = re.sub(r'[\s:_\-\|/\[\]\(\)]+', '', full_text)
 
     # 1. استبعاد الأفلام والمسلسلات والحلقات VOD والتايم شفت
@@ -325,7 +325,7 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if has_word(["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"], full_text):
         return "ALWAN SPORT"
 
-    # 6. 🛠️ باقة الفجر الرياضية (AL FAJER) - الكاشف المرن الخالي من المسافات لحصد AR: ALFAJER 1 4K إلى 5HD واستبعاد الجزائرية العامة
+    # 6. 🛠️ باقة الفجر الرياضية (AL FAJER) - صالحة لحصد AR: ALFAJER 1 4K إلى 5HD بكل مرونة
     if "alfajer" in clean_text or "alfajr" in clean_text or "fadjrsports" in clean_text or "fajersports" in clean_text or has_word(["fajer", "alfajer", "fadjr", "fajr", "الفجر", "فجر"], full_text):
         if not any(alg in full_text for alg in ["alg", "dz", "algeria", "الجزائر", "الجزائرية"]):
             return "AL FAJER"
@@ -371,7 +371,7 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if has_word(["mh", "ام اتش", "أم اتش"], full_text):
         return "MH GROUP"
 
-    # 17. تصفية الأطفال المباشرة (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية) مع حظر القنوات اليمنية
+    # 17. تصفية الأطفال المباشرة (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية)
     kids_strict_kw = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري",
         "masha", "ماشا", "دب",
@@ -384,7 +384,7 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
             if "en" not in full_text and "english" not in full_text:
                 return "KIDS"
 
-    # 18. 🛠️ تصفية الوثائقية الصارمة (حصر القناة الوثائقية لليمن فقط وحذف القنوات اليمنية العامة)
+    # 18. تصفية الوثائقية الصارمة (حصر القناة الوثائقية لليمن فقط وحذف القنوات اليمنية العامة)
     exact_doc_triggers = [
         "nat geo wild", "national geo wild", "ad nat geo", "الجزيرة الوثائقية", "al jazeera documentary",
         "aljazeera documentary", "وثائقية", "وثائقي", "alwathiqia", "alwathafeqia", "discovery",
@@ -512,7 +512,7 @@ def fetch_and_process_app2(session):
     return None, 0
 
 def fetch_and_process_wanplus(session):
-    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) لصفحة s1.m3u...")
+    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) لصفحة s1.m3u ومجموعاتها الشاملة...")
     api_params = {"code": ACTIVATION_CODE}
     api_headers = {
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)",
