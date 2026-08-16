@@ -280,6 +280,9 @@ EXCLUDE_TAGS_S1 = [
 def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     full_text = f"{channel_name} {orig_group}".lower().strip()
     name_lower = channel_name.lower().strip()
+    
+    # نص موحد ومنظف بدون مسافات أو رموز لإزالة أخطاء التباعد
+    clean_text = re.sub(r'[\s:_\-\|/\[\]\(\)]+', '', full_text)
 
     # 1. استبعاد الأفلام والمسلسلات والحلقات VOD والتايم شفت
     if not is_live_stream_only(stream_url, channel_name):
@@ -322,9 +325,10 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if has_word(["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"], full_text):
         return "ALWAN SPORT"
 
-    # 6. 🛠️ باقة الفجر الرياضية (AL FAJER) - تشمل ALFAJER و AL FAJER SPORTS الموضحة في صور التطبيق
-    if has_word(["fajer", "alfajer", "fadjr", "fadjir", "fajr", "الفجر", "فجر"], full_text):
-        return "AL FAJER"
+    # 6. 🛠️ باقة الفجر الرياضية (AL FAJER) - الكاشف المرن الخالي من المسافات لحصد AR: ALFAJER 1 4K إلى 5HD واستبعاد الجزائرية العامة
+    if "alfajer" in clean_text or "alfajr" in clean_text or "fadjrsports" in clean_text or "fajersports" in clean_text or has_word(["fajer", "alfajer", "fadjr", "fajr", "الفجر", "فجر"], full_text):
+        if not any(alg in full_text for alg in ["alg", "dz", "algeria", "الجزائر", "الجزائرية"]):
+            return "AL FAJER"
 
     # 7. باقة ألوان أفلام (ALWAN MOVIES)
     alwan_movies_kw = ["alwan movie", "alwan movies", "alwan cinema", "alwan film", "alwan aflam", "ألوان أفلام", "الوان افلام", "ألوان سينما", "الوان سينما"]
@@ -343,11 +347,11 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if has_word(["hbo", "h b o", "اتش بي او", "اتش بي أوا"], full_text):
         return "HBO"
 
-    # 11. 🛠️ باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE) - تصنيف كافة قنوات OSN الـ 53 الموضحة بالصورة
+    # 11. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE)
     if has_word(["osn", "o s n", "او اس ان", "أو إس إن", "box office", "boxoffice", "art", "ارتي", "أرتي"], full_text):
         return "BOX OFFICE"
 
-    # 12. 🛠️ باقة نتفليكس وشاهد (NETFLIX) - تصنيف كافة قنوات NETFLIX الـ 29 الموضحة بالصورة
+    # 12. باقة نتفليكس وشاهد (NETFLIX)
     if has_word(["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"], full_text) or "net |" in full_text:
         return "NETFLIX"
 
@@ -367,7 +371,7 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if has_word(["mh", "ام اتش", "أم اتش"], full_text):
         return "MH GROUP"
 
-    # 17. 🛠️ تصفية الأطفال المباشرة (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية) مع حظر القنوات اليمنية من باقة الأطفال
+    # 17. تصفية الأطفال المباشرة (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية) مع حظر القنوات اليمنية
     kids_strict_kw = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري",
         "masha", "ماشا", "دب",
@@ -376,16 +380,15 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
         "cartoon network", "cn arabia", "كرتون نتورك"
     ]
     if has_word(kids_strict_kw, full_text):
-        # استبعاد أي قناة يمنية تسربت لباقة الأطفال
         if "yemen" not in full_text and "اليمن" not in full_text:
             if "en" not in full_text and "english" not in full_text:
                 return "KIDS"
 
-    # 18. 🛠️ تصفية الوثائقية الصارمة (تشمل قناة اليمن الوثائقية المحددة)
+    # 18. 🛠️ تصفية الوثائقية الصارمة (حصر القناة الوثائقية لليمن فقط وحذف القنوات اليمنية العامة)
     exact_doc_triggers = [
         "nat geo wild", "national geo wild", "ad nat geo", "الجزيرة الوثائقية", "al jazeera documentary",
         "aljazeera documentary", "وثائقية", "وثائقي", "alwathiqia", "alwathafeqia", "discovery",
-        "asharq", "الشرق", "yemen", "اليمن", "osn documentary", "netflix documentary",
+        "asharq", "الشرق", "yemen documentary", "اليمن الوثائقية", "osn documentary", "netflix documentary",
         "ushuaia", "أوشوايا", "animal planet", "anemal planet", "animaux", "nature", "natura"
     ]
     if any(trigger in full_text for trigger in exact_doc_triggers):
@@ -509,7 +512,7 @@ def fetch_and_process_app2(session):
     return None, 0
 
 def fetch_and_process_wanplus(session):
-    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) بـ الكواشف المحدثة من شاشات التلفزيون لـ s1.m3u...")
+    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) لصفحة s1.m3u...")
     api_params = {"code": ACTIVATION_CODE}
     api_headers = {
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)",
