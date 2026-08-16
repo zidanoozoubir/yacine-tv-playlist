@@ -50,23 +50,19 @@ def is_live_stream_only(url, title):
     u = url.lower().strip()
     t = title.lower().strip()
 
-    # 1. فحص مسار الرابط: يجب أن يكون بَث كنع حي (/live/) وليس مسار فيلم أو مسلسل
     if "/movie/" in u or "/series/" in u or u.endswith(".mp4") or u.endswith(".mkv") or u.endswith(".avi"):
         return False
     if "/live/" not in u and "/live//" not in u:
         return False
 
-    # 2. كشف الحلقات والمواسم VOD مثل: S01 E01, S02E23, S01, E01, Ep 1, Part 1...
     if re.search(r'\bs\d{1,2}\s*e\d{1,2}\b', t) or re.search(r'\bs\d{2}\b', t) or re.search(r'\be\d{2}\b', t):
         return False
     if re.search(r'\b(season|episode|part|ep)\s*\d+\b', t):
         return False
 
-    # 3. كشف مقاطع الفيديو الأرشيفية المتراتبة مثل: "Tom and Jerry 1", "Tom and Jerry 2"...
     if re.search(r'\b(tom\s*and\s*jerry|tiki|masha)\s+\d+\b', t):
         return False
 
-    # 4. كشف قنوات التأخير والتبديل الزمني مثل: -2h, -4h, -6h, -8h, -10h, -12h, +1h...
     if re.search(r'[-+]\d{1,2}h\b', t) or "timeshift" in t or "time shift" in t:
         return False
 
@@ -272,7 +268,7 @@ def process_m3u_kz(m3u_text):
 
 
 # ==============================================================================
-# SECTION B: كود التصفية الصارمة مع حظر VOD المخصص لصفحة s1.m3u (وان+)
+# SECTION B: كود التصفية الصارمة والدقيقة المخصص لصفحة s1.m3u (وان+)
 # ==============================================================================
 EXCLUDE_TAGS_S1 = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro", "vip pt", "vip nl", "vip se", "vip no", "vip al",
@@ -287,10 +283,8 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     full_text = f"{channel_name} {orig_group}".lower().strip()
     name_lower = channel_name.lower().strip()
 
-    # 1. 🛠️ حظر واستبعاد مسارات الأفلام والمسلسلات والحلقات VOD والتايم شفت
-    if is_live_stream_only(stream_url, channel_name):
-        pass
-    else:
+    # 1. حظر واستبعاد مسارات الأفلام والمسلسلات والحلقات VOD والتايم شفت
+    if not is_live_stream_only(stream_url, channel_name):
         return None
 
     # 2. استبعاد الدولة أو اللغات الأجنبية
@@ -326,16 +320,16 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
         if has_word(bein_sports_triggers, full_text):
             return "BEIN SPORT AR"
 
-    # 5. 🛠️ باقة ألوان سبورت (ALWAN SPORT)
+    # 5. باقة ألوان سبورت (ALWAN SPORT)
     if has_word(["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"], full_text):
         return "ALWAN SPORT"
 
-    # 6. 🛠️ باقة ألوان أفلام (ALWAN MOVIES) - حصراً للقنوات التي تحمل اسم ALWAN MOVIES / CINEMA
+    # 6. باقة ألوان أفلام (ALWAN MOVIES)
     alwan_movies_kw = ["alwan movie", "alwan movies", "alwan cinema", "alwan film", "alwan aflam", "ألوان أفلام", "الوان افلام", "ألوان سينما", "الوان سينما"]
     if has_word(alwan_movies_kw, full_text):
         return "ALWAN MOVIES"
 
-    # 7. باقة ام بي سي (MBC GROUP) - تشمل MBC 3 المباشرة
+    # 7. باقة ام بي سي (MBC GROUP)
     if has_word(["mbc", "m b c", "ام بي سي", "إم بي سي", "mpc"], full_text):
         return "MBC GROUP"
 
@@ -371,21 +365,26 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if has_word(["mh", "ام اتش", "أم اتش"], full_text):
         return "MH GROUP"
 
-    # 16. 🛠️ تصفية الأطفال المباشرة (توم وجيري، ماشا والدب، سبيستون، براعم، كارتون نتورك العربية، ام بي سي 3)
+    # 16. 🛠️ تصفية الأطفال الصارمة جداً لـ s1.m3u (ماشا والدب، توم وجيري، كارتون نتورك العربية، سبيستون/براعم)
     kids_strict_kw = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري",
         "masha", "ماشا", "دب",
         "spacetoon", "سبيستون", "سبيس تون",
         "baraem", "براعم",
-        "cartoon network", "cn arabia", "كرتون نتورك" # كرتون نتورك العربية
+        "cartoon network", "cn arabia", "كرتون نتورك"
     ]
     if has_word(kids_strict_kw, full_text):
         if "en" not in full_text and "english" not in full_text:
             return "KIDS"
 
-    # 17. تصفية الوثائقية (DOCUMENTARY)
-    doc_keywords = ["documentary", "وثائقي", "وثائقية", "nat geo", "national geo", "discovery", "history", "animal planet", "ushuaia", "histoire", "science", "alwathiqia"]
-    if has_word(doc_keywords, full_text):
+    # 17. 🛠️ تصفية الوثائقية الصارمة جداً لـ s1.m3u (القنوات المحددة بالاسم والكلمة حصراً)
+    exact_doc_triggers = [
+        "nat geo wild", "national geo wild", "ad nat geo", "الجزيرة الوثائقية", "al jazeera documentary",
+        "aljazeera documentary", "وثائقية", "وثائقي", "alwathiqia", "alwathafeqia", "discovery",
+        "asharq", "الشرق", "yemen", "اليمن", "osn documentary", "netflix documentary",
+        "ushuaia", "أوشوايا", "animal planet", "anemal planet", "animaux", "nature", "natura"
+    ]
+    if any(trigger in full_text for trigger in exact_doc_triggers):
         foreign_doc_tags = ["al:", "pt:", "nl:", "il:", "so:", "no:", "se:", "de:", "uk:", "es:", "it:", "tr:", "ru:", "pl:", "bg:", "cz:", "hu:", "ro:", "dk:", "us:"]
         if not any(foreign in full_text for foreign in foreign_doc_tags):
             return "DOCUMENTARY"
@@ -413,7 +412,6 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if any(tag in full_text for tag in french_tags) or has_word(french_kw, full_text):
         return "FRENCH"
 
-    # 🚫 تم حذف ARABIC NEWS تماماً!
     return None
 
 PREFERRED_ORDER_S1 = [
@@ -462,7 +460,6 @@ def process_m3u_s1(m3u_text):
 
                 final_url = line_str.replace(".m3u8", ".ts")
 
-                # الفحص باستبعاد الأفلام والمسلسلات برمجياً والتحقق من سريان البث الحي فقط
                 group_title = classify_channel_s1(channel_name, orig_group, final_url)
                 if group_title:
                     logo = ""
@@ -477,6 +474,10 @@ def process_m3u_s1(m3u_text):
                     seen_urls.add(final_url)
                     total_count += 1
                 current_extinf = ""
+
+    # 🛠️ تحديد أقصى عدد (4 قنوات فقط لا غير) لباقة الأطفال في s1.m3u
+    if "KIDS" in grouped_channels:
+        grouped_channels["KIDS"] = grouped_channels["KIDS"][:4]
 
     m3u_lines = ["#EXTM3U"]
     for group in PREFERRED_ORDER_S1:
@@ -506,7 +507,7 @@ def fetch_and_process_app2(session):
     return None, 0
 
 def fetch_and_process_wanplus(session):
-    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) بـ الفلترة الفائقة لـ s1.m3u...")
+    print(f"\n🚀 [المسار الثاني]: جاري الاتصال بالـ API لتفعيل التطبيق الجديد (وان+) لصفحة s1.m3u مع تصفية الوثائقية وتحديد الأطفال بـ 4 قنوات...")
     api_params = {"code": ACTIVATION_CODE}
     api_headers = {
         "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)",
