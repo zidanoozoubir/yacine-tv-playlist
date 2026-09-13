@@ -70,7 +70,7 @@ def is_live_stream_only(url, title):
 
 
 # ==============================================================================
-# SECTION A: كود وتصنيف صفحة kz.m3u المحدث لدعم الـ API الجديد
+# SECTION A: تصنيف ومعالجة قنوات الباشا تيفي لصفحة kz.m3u
 # ==============================================================================
 EXCLUDE_TAGS_KZ = [
     "vip de", "vip uk", "vip ru", "vip bg", "vip pl", "vip es", "vip tr", "vip ph", "vip it", "vip br", "vip us", "vip dk", "vip hu", "vip ro", "vip pt", "vip nl", "vip se", "vip no",
@@ -221,6 +221,13 @@ PREFERRED_ORDER_KZ = [
     "FRENCH"
 ]
 
+def clean_stream_url(raw_url):
+    """تخطي البروكسي المعطل 109.122.18.14 واستخراج رابط البث المباشر الفعلي"""
+    url = raw_url.strip()
+    if "proxy?url=" in url:
+        url = url.split("proxy?url=")[-1].strip()
+    return url
+
 def process_json_kz(channels_list):
     grouped_channels = defaultdict(list)
     total_count = 0
@@ -232,12 +239,16 @@ def process_json_kz(channels_list):
 
         channel_name = item.get("name", "").strip()
         orig_group = item.get("group_title", "").strip()
-        final_url = item.get("url", "").strip()
+        raw_url = item.get("url", "").strip()
         logo = item.get("logo", "").strip()
         item_ua = item.get("user_agent", "").strip()
         item_ref = item.get("refrens", "").strip()
 
-        if not final_url or not channel_name:
+        if not raw_url or not channel_name:
+            continue
+
+        final_url = clean_stream_url(raw_url)
+        if not final_url:
             continue
 
         group_title = classify_channel_kz(channel_name, orig_group)
@@ -245,19 +256,24 @@ def process_json_kz(channels_list):
             if final_url in seen_urls:
                 continue
 
-            # تخصيص الـ User-Agent و Referrer لكل قناة لضمان فتح البروكسيات
+            # تخصيص الـ User-Agent الحقيقي بدون أي تزييف
             ua = item_ua if item_ua else "okhttp/3.9.1"
-            ref = item_ref if item_ref else "http://albashatv.site/"
 
-            vlc_opts_str = (
-                "#EXTVLCOPT:http-header=Icy-MetaData: 1\n"
-                f"#EXTVLCOPT:http-user-agent={ua}\n"
-                f"#EXTVLCOPT:http-referrer={ref}"
-            )
+            # تجهيز خيارات المشغل (بدون فرض Referer خاطئ يمنع البث)
+            vlc_opts = [
+                "#EXTVLCOPT:http-header=Icy-MetaData: 1",
+                f"#EXTVLCOPT:http-user-agent={ua}"
+            ]
+            if item_ref:
+                vlc_opts.append(f"#EXTVLCOPT:http-referrer={item_ref}")
 
+            vlc_opts_str = "\n".join(vlc_opts)
+            ref_attr = f' http-referrer="{item_ref}"' if item_ref else ''
+
+            # صيغة متوافقة تماماً مع VLC، TiviMate، وأجهزة الريسيفر (Geant, Starsat...)
             entry = (
                 f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}" '
-                f'http-user-agent="{ua}" http-referrer="{ref}",{channel_name}\n'
+                f'http-user-agent="{ua}" user-agent="{ua}"{ref_attr},{channel_name}\n'
                 f'{vlc_opts_str}\n'
                 f'{final_url}'
             )
