@@ -4,6 +4,8 @@ import re
 from collections import defaultdict
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
+from urllib.parse import urljoin
+from concurrent.futures import ThreadPoolExecutor
 
 # ==========================================
 # 1. الإعدادات ومتغيرات البيئة المعرفة
@@ -18,6 +20,9 @@ ALBASHA_API_ENDPOINT = os.environ.get(
     "ALBASHA_API_ENDPOINT",
     "https://albashatv.site/api.php"
 )
+
+# هيدر الباشا / Lion الرسمي المشغل للسيرفرات
+LION_UA = "com.shadeed.lionpro/56 (Linux; U; Android 14; ar_EG_#u-nu-arab; LLY-LX2; Build/HONORLLY-L32; Cronet/151.0.7922.83)"
 
 # إعدادات وان+
 WANPLUS_API_ENDPOINT = os.environ.get(
@@ -228,11 +233,41 @@ def clean_stream_url(raw_url):
         url = url.split("proxy?url=")[-1].strip()
     return url
 
-def process_json_kz(channels_list):
-    grouped_channels = defaultdict(list)
-    total_count = 0
+def get_effective_ua(raw_ua):
+    """تصحيح هيدر الـ User-Agent التالف أو الفارغ وإسناد هيدر Lion الرسمي"""
+    ua = (raw_ua or "").strip()
+    if not ua or ua.startswith("oC6") or "okhttp" in ua.lower():
+        return LION_UA
+    return ua
+
+def resolve_stream_url(session, url, ua):
+    """حل تحويلات الـ 302 واستخراج الرابط المباشر والتوكن من موزعات الأحمال"""
+    if not url or not url.startswith("http"):
+        return url
+
+    # إذا كان الرابط محلولاً مسبقاً وفيه توكن جاهز، نتركه كما هو
+    if "?token=" in url and ":2095" in url:
+        return url
+
+    curr_url = url
+    for _ in range(2):
+        try:
+            resp = session.get(curr_url, headers={"User-Agent": ua}, allow_redirects=False, timeout=3)
+            if resp.status_code in [301, 302, 303, 307, 308]:
+                loc = resp.headers.get("Location")
+                if loc:
+                    curr_url = urljoin(curr_url, loc.strip())
+                    continue
+            break
+        except Exception:
+            break
+    return curr_url
+
+def process_json_kz(channels_list, session):
+    candidates = []
     seen_urls = set()
 
+    # 1. جمع القنوات المؤهلة وتصحيح الهيدرات
     for item in channels_list:
         if not isinstance(item, dict):
             continue
@@ -248,38 +283,63 @@ def process_json_kz(channels_list):
             continue
 
         final_url = clean_stream_url(raw_url)
-        if not final_url:
+        if not final_url or final_url in seen_urls:
             continue
 
         group_title = classify_channel_kz(channel_name, orig_group)
-        if group_title:
-            if final_url in seen_urls:
-                continue
+        if not group_title:
+            continue
 
-            # تخصيص الـ User-Agent الحقيقي بدون أي تزييف
-            ua = item_ua if item_ua else "okhttp/3.9.1"
+        ua = get_effective_ua(item_ua)
+        candidates.append({
+            "name": channel_name,
+            "group": group_title,
+            "url": final_url,
+            "logo": logo,
+            "ua": ua,
+            "ref": item_ref
+        })
+        seen_urls.add(final_url)
 
-            # تجهيز خيارات المشغل (بدون فرض Referer خاطئ يمنع البث)
-            vlc_opts = [
-                "#EXTVLCOPT:http-header=Icy-MetaData: 1",
-                f"#EXTVLCOPT:http-user-agent={ua}"
-            ]
-            if item_ref:
-                vlc_opts.append(f"#EXTVLCOPT:http-referrer={item_ref}")
+    # 2. حل روابط التوكن والموزعات بالتوازي
+    print(f"🔄 جاري حل روابط البث واستخراج التوكنات لـ ({len(candidates)}) قناة بالتوازي...")
+    def resolve_candidate(cand):
+        cand["resolved_url"] = resolve_stream_url(session, cand["url"], cand["ua"])
+        return cand
 
-            vlc_opts_str = "\n".join(vlc_opts)
-            ref_attr = f' http-referrer="{item_ref}"' if item_ref else ''
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        resolved_candidates = list(executor.map(resolve_candidate, candidates))
 
-            # صيغة متوافقة تماماً مع VLC، TiviMate، وأجهزة الريسيفر (Geant, Starsat...)
-            entry = (
-                f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}" '
-                f'http-user-agent="{ua}" user-agent="{ua}"{ref_attr},{channel_name}\n'
-                f'{vlc_opts_str}\n'
-                f'{final_url}'
-            )
-            grouped_channels[group_title].append(entry)
-            seen_urls.add(final_url)
-            total_count += 1
+    # 3. بناء ملف الـ M3U النهائي المتوافق تماماً مع VLC والريسيفرات
+    grouped_channels = defaultdict(list)
+    total_count = 0
+
+    for item in resolved_candidates:
+        group_title = item["group"]
+        channel_name = item["name"]
+        final_url = item["resolved_url"]
+        logo = item["logo"]
+        ua = item["ua"]
+        ref = item["ref"]
+
+        vlc_opts = [
+            "#EXTVLCOPT:http-header=Icy-MetaData: 1",
+            f"#EXTVLCOPT:http-user-agent={ua}"
+        ]
+        if ref:
+            vlc_opts.append(f"#EXTVLCOPT:http-referrer={ref}")
+
+        vlc_opts_str = "\n".join(vlc_opts)
+        ref_attr = f' http-referrer="{ref}"' if ref else ''
+
+        entry = (
+            f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}" '
+            f'http-user-agent="{ua}" user-agent="{ua}"{ref_attr},{channel_name}\n'
+            f'{vlc_opts_str}\n'
+            f'{final_url}'
+        )
+        grouped_channels[group_title].append(entry)
+        total_count += 1
 
     m3u_lines = ["#EXTM3U"]
     for group in PREFERRED_ORDER_KZ:
@@ -536,7 +596,7 @@ def fetch_and_process_albasha(session):
                 channels_data = response.json()
                 if isinstance(channels_data, list) and len(channels_data) > 0:
                     print(f"✅ تم استلام مصفوفة القنوات بنجاح ({len(channels_data)} عنصر).")
-                    return process_json_kz(channels_data)
+                    return process_json_kz(channels_data, session)
                 else:
                     print("⚠️ استجابة API الباشا لم ترجع مصفوفة قنوات صحيحة.")
             except Exception as je:
@@ -634,7 +694,7 @@ def update_specific_gist(session, gist_id, page_label, content, total_count):
 def main():
     session = create_session()
 
-    # 1. تنفيذ المسار الأول (الباشا تيفي API الجديد -> تحديث kz.m3u)
+    # 1. تنفيذ المسار الأول (الباشا تيفي API الجديد مع حل التوكنات -> تحديث kz.m3u)
     kz_content, kz_count = fetch_and_process_albasha(session)
     update_specific_gist(session, GIST_KZ_ID, "kz.m3u", kz_content, kz_count)
 
