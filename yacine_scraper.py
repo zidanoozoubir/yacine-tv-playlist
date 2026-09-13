@@ -32,12 +32,20 @@ WANPLUS_API_ENDPOINT = os.environ.get(
 ACTIVATION_CODE = os.environ.get("ACTIVATION_CODE", "V1")
 
 # ==========================================
-# 2. إنشاء جلسة اتصال مستقرة
+# 2. إنشاء جلسات اتصال متخصصة (سريعة ومستقرة)
 # ==========================================
 def create_session():
     session = requests.Session()
-    retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+    retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retries, pool_connections=30, pool_maxsize=30)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+def create_probe_session():
+    """جلسة فائقة السرعة لفحص الروابط بدون أي إعادة محاولة أو تأخير"""
+    session = requests.Session()
+    adapter = HTTPAdapter(max_retries=0, pool_connections=40, pool_maxsize=40)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
@@ -52,7 +60,6 @@ def match_exact_word(kw, text):
 def has_word(kw_list, text):
     return any(match_exact_word(kw, text) for kw in kw_list)
 
-# كاشف واستبعاد الأفلام والمسلسلات والمقاطع وقنوات التايم شفت لـ s1.m3u
 def is_live_stream_only(url, title):
     u = url.lower().strip()
     t = title.lower().strip()
@@ -240,34 +247,41 @@ def get_effective_ua(raw_ua):
         return LION_UA
     return ua
 
-def resolve_stream_url(session, url, ua):
-    """حل تحويلات الـ 302 واستخراج الرابط المباشر والتوكن من موزعات الأحمال"""
+def should_resolve(url):
+    """فحص ذكي: هل يحتاج هذا الرابط حقاً إلى حل التوكن والتحويل؟"""
     if not url or not url.startswith("http"):
-        return url
-
-    # إذا كان الرابط محلولاً مسبقاً وفيه توكن جاهز، نتركه كما هو
+        return False
+    # الروابط التي تحوي توكن ومنفذ 2095 أو السيرفرات المباشرة لا تحتاج أي وقت
     if "?token=" in url and ":2095" in url:
+        return False
+    # الروابط التي تحول فقط هي التي نفحصها
+    return any(domain in url.lower() for domain in ["lionmax", "megoaroma"])
+
+def resolve_stream_url(probe_session, url, ua):
+    """حل تحويلات الـ 302 في أجزاء من الثانية مع إغلاق فوري للبث المباشر لمنع التعليق"""
+    if not should_resolve(url):
         return url
 
     curr_url = url
     for _ in range(2):
         try:
-            resp = session.get(curr_url, headers={"User-Agent": ua}, allow_redirects=False, timeout=3)
-            if resp.status_code in [301, 302, 303, 307, 308]:
-                loc = resp.headers.get("Location")
-                if loc:
-                    curr_url = urljoin(curr_url, loc.strip())
-                    continue
+            # استخدام stream=True حاسم جداً حتى لا يقوم بايثون بتنزيل الفيديو الحي
+            resp = probe_session.get(curr_url, headers={"User-Agent": ua}, allow_redirects=False, stream=True, timeout=2.0)
+            loc = resp.headers.get("Location")
+            resp.close()  # إغلاق الاتصال فوراً بمجرد قراءة الهيدر!
+            if loc:
+                curr_url = urljoin(curr_url, loc.strip())
+                continue
             break
         except Exception:
             break
     return curr_url
 
-def process_json_kz(channels_list, session):
+def process_json_kz(channels_list):
     candidates = []
     seen_urls = set()
 
-    # 1. جمع القنوات المؤهلة وتصحيح الهيدرات
+    # 1. جمع القنوات وتصفيتها بسرعة
     for item in channels_list:
         if not isinstance(item, dict):
             continue
@@ -301,16 +315,18 @@ def process_json_kz(channels_list, session):
         })
         seen_urls.add(final_url)
 
-    # 2. حل روابط التوكن والموزعات بالتوازي
-    print(f"🔄 جاري حل روابط البث واستخراج التوكنات لـ ({len(candidates)}) قناة بالتوازي...")
+    # 2. حل روابط التوكن للموزعات فقط (خلال ثانية واحدة بالتوازي)
+    print(f"⚡ جاري فحص وحل روابط ({len(candidates)}) قناة بسرعة فائقة...")
+    probe_session = create_probe_session()
+
     def resolve_candidate(cand):
-        cand["resolved_url"] = resolve_stream_url(session, cand["url"], cand["ua"])
+        cand["resolved_url"] = resolve_stream_url(probe_session, cand["url"], cand["ua"])
         return cand
 
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=25) as executor:
         resolved_candidates = list(executor.map(resolve_candidate, candidates))
 
-    # 3. بناء ملف الـ M3U النهائي المتوافق تماماً مع VLC والريسيفرات
+    # 3. بناء ملف M3U
     grouped_channels = defaultdict(list)
     total_count = 0
 
@@ -367,22 +383,18 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     
     clean_text = re.sub(r'[\s:_\-\|/\[\]\(\)]+', '', full_text)
 
-    # 1. استبعاد الأفلام والمسلسلات والحلقات VOD والتايم شفت
     if not is_live_stream_only(stream_url, channel_name):
         return None
 
-    # 2. استبعاد الدولة أو اللغات الأجنبية
     if any(tag in full_text for tag in EXCLUDE_TAGS_S1):
         return None
 
     if name_lower.startswith("usa") or "usa h" in full_text:
         return None
 
-    # 3. باقة تود (BEIN TOD)
     if has_word(["tod", "تود"], full_text) and "today" not in full_text:
         return "BEIN TOD"
 
-    # 4. باقة بيين سبورت
     if has_word(["bein", "بي ان", "بي إن"], full_text):
         if has_word(["fr", "france", "french", "فرنسية", "فرنسيه"], full_text):
             if has_word(["sport", "sports", "h.265", "h265", "hevc"], full_text):
@@ -404,57 +416,44 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
         if has_word(bein_sports_triggers, full_text):
             return "BEIN SPORT AR"
 
-    # 5. باقة ألوان سبورت (ALWAN SPORT)
     if has_word(["alwan sport", "alwan sports", "الوان سبورت", "ألوان سبورت", "الوان الرياضية", "ألوان الرياضية"], full_text):
         return "ALWAN SPORT"
 
-    # 6. باقة الفجر الرياضية (AL FAJER)
     if "alfajer" in clean_text or "alfajr" in clean_text or "fadjrsports" in clean_text or "fajersports" in clean_text or has_word(["fajer", "alfajer", "fadjr", "fajr", "الفجر", "فجر"], full_text):
         if not any(alg in full_text for alg in ["alg", "dz", "algeria", "الجزائر", "الجزائرية"]):
             return "AL FAJER"
 
-    # 7. باقة ألوان أفلام (ALWAN MOVIES)
     alwan_movies_kw = ["alwan movie", "alwan movies", "alwan cinema", "alwan film", "alwan aflam", "ألوان أفلام", "الوان افلام", "ألوان سينما", "الوان سينما"]
     if has_word(alwan_movies_kw, full_text):
         return "ALWAN MOVIES"
 
-    # 8. باقة ام بي سي (MBC GROUP)
     if has_word(["mbc", "m b c", "ام بي سي", "إم بي سي", "mpc"], full_text):
         return "MBC GROUP"
 
-    # 9. باقة روتانا (ROTANA)
     if has_word(["rotana", "روتانا"], full_text):
         return "ROTANA"
 
-    # 10. باقة اتش بي او (HBO)
     if has_word(["hbo", "h b o", "اتش بي او", "اتش بي أوا"], full_text):
         return "HBO"
 
-    # 11. باقة او اس ان وبوكس اوفيس وارتي (BOX OFFICE)
     if has_word(["osn", "o s n", "او اس ان", "أو إس إن", "box office", "boxoffice", "art", "ارتي", "أرتي"], full_text):
         return "BOX OFFICE"
 
-    # 12. باقة نتفليكس وشاهد (NETFLIX)
     if has_word(["netflix", "نتفليكس", "نتفلكس", "shahid", "شاهد"], full_text) or "net |" in full_text:
         return "NETFLIX"
 
-    # 13. باقة أمازون برايم (AMAZON PRIME)
     if has_word(["amazon", "prime", "أمازون", "امازون"], full_text):
         return "AMAZON PRIME"
 
-    # 14. باقة شوتايم (SHOWTIME)
     if has_word(["showtime", "شوتايم"], full_text):
         return "SHOWTIME"
 
-    # 15. باقة هوم سينما (HOME CINEMA)
     if has_word(["home cinema", "homecinema", "هوم سينما"], full_text):
         return "HOME CINEMA"
 
-    # 16. باقة ام اتش (MH GROUP)
     if has_word(["mh", "ام اتش", "أم اتش"], full_text):
         return "MH GROUP"
 
-    # 17. تصفية الأطفال المباشرة
     kids_strict_kw = [
         "tom and jerry", "tom & jerry", "توم وجيري", "توم وجري",
         "masha", "ماشا", "دب",
@@ -467,7 +466,6 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
             if "en" not in full_text and "english" not in full_text:
                 return "KIDS"
 
-    # 18. تصفية الوثائقية الصارمة
     exact_doc_triggers = [
         "nat geo wild", "national geo wild", "ad nat geo", "الجزيرة الوثائقية", "al jazeera documentary",
         "aljazeera documentary", "وثائقية", "وثائقي", "alwathiqia", "alwathafeqia", "discovery",
@@ -482,7 +480,6 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
         if not any(ex in full_text for ex in doc_exclude_words):
             return "DOCUMENTARY"
 
-    # 19. الجزائر (ALGERIA)
     algeria_keywords = [
         "algeria", "algerie", "algérie", "algerien", "entv", "الجزائر", "الجزائرية", 
         "الهداف", "el heddaf", "el bilad", "البلاد", "الشروق", "echorouk", "النهار", 
@@ -491,7 +488,6 @@ def classify_channel_s1(channel_name, orig_group="", stream_url=""):
     if has_word(algeria_keywords, full_text):
         return "ALGERIA"
 
-    # 20. القنوات الفرنسية (FRENCH)
     french_tags = ["france", "فرنسا", "fr:", "fr ", "(fr)", "[fr]", "fr|", "fr |", "fr-", "fr_", "french"]
     french_kw = [
         "tf1", "m6", "canal+", "canal", "rmc", "eurosport", "lequipe", "l'equipe", 
@@ -590,13 +586,13 @@ def fetch_and_process_albasha(session):
 
     print("\n🚀 [المسار الأول]: جاري الاتصال بـ API الباشا تيفي الجديد (o6) لصفحة kz.m3u...")
     try:
-        response = session.post(ALBASHA_API_ENDPOINT, data=payload, headers=headers, timeout=25)
+        response = session.post(ALBASHA_API_ENDPOINT, data=payload, headers=headers, timeout=20)
         if response.status_code == 200:
             try:
                 channels_data = response.json()
                 if isinstance(channels_data, list) and len(channels_data) > 0:
                     print(f"✅ تم استلام مصفوفة القنوات بنجاح ({len(channels_data)} عنصر).")
-                    return process_json_kz(channels_data, session)
+                    return process_json_kz(channels_data)
                 else:
                     print("⚠️ استجابة API الباشا لم ترجع مصفوفة قنوات صحيحة.")
             except Exception as je:
@@ -694,7 +690,7 @@ def update_specific_gist(session, gist_id, page_label, content, total_count):
 def main():
     session = create_session()
 
-    # 1. تنفيذ المسار الأول (الباشا تيفي API الجديد مع حل التوكنات -> تحديث kz.m3u)
+    # 1. تنفيذ المسار الأول (الباشا تيفي API الجديد -> تحديث kz.m3u)
     kz_content, kz_count = fetch_and_process_albasha(session)
     update_specific_gist(session, GIST_KZ_ID, "kz.m3u", kz_content, kz_count)
 
