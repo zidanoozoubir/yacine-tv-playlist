@@ -4,8 +4,6 @@ import re
 from collections import defaultdict
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
-from urllib.parse import urljoin
-from concurrent.futures import ThreadPoolExecutor
 
 # ==========================================
 # 1. الإعدادات ومتغيرات البيئة المعرفة
@@ -21,7 +19,7 @@ ALBASHA_API_ENDPOINT = os.environ.get(
     "https://albashatv.site/api.php"
 )
 
-# هيدر الباشا / Lion الرسمي المشغل للسيرفرات
+# هيدر الباشا / Lion الرسمي المعتمد من السيرفر
 LION_UA = "com.shadeed.lionpro/56 (Linux; U; Android 14; ar_EG_#u-nu-arab; LLY-LX2; Build/HONORLLY-L32; Cronet/151.0.7922.83)"
 
 # إعدادات وان+
@@ -32,20 +30,12 @@ WANPLUS_API_ENDPOINT = os.environ.get(
 ACTIVATION_CODE = os.environ.get("ACTIVATION_CODE", "V1")
 
 # ==========================================
-# 2. إنشاء جلسات اتصال متخصصة (سريعة ومستقرة)
+# 2. إنشاء جلسة اتصال مستقرة
 # ==========================================
 def create_session():
     session = requests.Session()
-    retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
+    retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
     adapter = HTTPAdapter(max_retries=retries, pool_connections=30, pool_maxsize=30)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
-
-def create_probe_session():
-    """جلسة فائقة السرعة لفحص الروابط بدون أي إعادة محاولة أو تأخير"""
-    session = requests.Session()
-    adapter = HTTPAdapter(max_retries=0, pool_connections=40, pool_maxsize=40)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
     return session
@@ -241,47 +231,17 @@ def clean_stream_url(raw_url):
     return url
 
 def get_effective_ua(raw_ua):
-    """تصحيح هيدر الـ User-Agent التالف أو الفارغ وإسناد هيدر Lion الرسمي"""
+    """تصحيح هيدر الـ User-Agent التالف أو الفارغ وإسناد هيدر Lion الرسمي الفعّال"""
     ua = (raw_ua or "").strip()
     if not ua or ua.startswith("oC6") or "okhttp" in ua.lower():
         return LION_UA
     return ua
 
-def should_resolve(url):
-    """فحص ذكي: هل يحتاج هذا الرابط حقاً إلى حل التوكن والتحويل؟"""
-    if not url or not url.startswith("http"):
-        return False
-    # الروابط التي تحوي توكن ومنفذ 2095 أو السيرفرات المباشرة لا تحتاج أي وقت
-    if "?token=" in url and ":2095" in url:
-        return False
-    # الروابط التي تحول فقط هي التي نفحصها
-    return any(domain in url.lower() for domain in ["lionmax", "megoaroma"])
-
-def resolve_stream_url(probe_session, url, ua):
-    """حل تحويلات الـ 302 في أجزاء من الثانية مع إغلاق فوري للبث المباشر لمنع التعليق"""
-    if not should_resolve(url):
-        return url
-
-    curr_url = url
-    for _ in range(2):
-        try:
-            # استخدام stream=True حاسم جداً حتى لا يقوم بايثون بتنزيل الفيديو الحي
-            resp = probe_session.get(curr_url, headers={"User-Agent": ua}, allow_redirects=False, stream=True, timeout=2.0)
-            loc = resp.headers.get("Location")
-            resp.close()  # إغلاق الاتصال فوراً بمجرد قراءة الهيدر!
-            if loc:
-                curr_url = urljoin(curr_url, loc.strip())
-                continue
-            break
-        except Exception:
-            break
-    return curr_url
-
 def process_json_kz(channels_list):
-    candidates = []
+    grouped_channels = defaultdict(list)
+    total_count = 0
     seen_urls = set()
 
-    # 1. جمع القنوات وتصفيتها بسرعة
     for item in channels_list:
         if not isinstance(item, dict):
             continue
@@ -291,7 +251,6 @@ def process_json_kz(channels_list):
         raw_url = item.get("url", "").strip()
         logo = item.get("logo", "").strip()
         item_ua = item.get("user_agent", "").strip()
-        item_ref = item.get("refrens", "").strip()
 
         if not raw_url or not channel_name:
             continue
@@ -301,61 +260,22 @@ def process_json_kz(channels_list):
             continue
 
         group_title = classify_channel_kz(channel_name, orig_group)
-        if not group_title:
-            continue
+        if group_title:
+            # ضمان أن كل قناة تأخذ الهيدر الأصلي الفعّال
+            ua = get_effective_ua(item_ua)
 
-        ua = get_effective_ua(item_ua)
-        candidates.append({
-            "name": channel_name,
-            "group": group_title,
-            "url": final_url,
-            "logo": logo,
-            "ua": ua,
-            "ref": item_ref
-        })
-        seen_urls.add(final_url)
+            # صيغة قياسية خفيفة متوافقة 100% مع أجهزة الاستقبال و VLC بدون أسطر تشويش
+            vlc_opts_str = f"#EXTVLCOPT:http-user-agent={ua}"
 
-    # 2. حل روابط التوكن للموزعات فقط (خلال ثانية واحدة بالتوازي)
-    print(f"⚡ جاري فحص وحل روابط ({len(candidates)}) قناة بسرعة فائقة...")
-    probe_session = create_probe_session()
-
-    def resolve_candidate(cand):
-        cand["resolved_url"] = resolve_stream_url(probe_session, cand["url"], cand["ua"])
-        return cand
-
-    with ThreadPoolExecutor(max_workers=25) as executor:
-        resolved_candidates = list(executor.map(resolve_candidate, candidates))
-
-    # 3. بناء ملف M3U
-    grouped_channels = defaultdict(list)
-    total_count = 0
-
-    for item in resolved_candidates:
-        group_title = item["group"]
-        channel_name = item["name"]
-        final_url = item["resolved_url"]
-        logo = item["logo"]
-        ua = item["ua"]
-        ref = item["ref"]
-
-        vlc_opts = [
-            "#EXTVLCOPT:http-header=Icy-MetaData: 1",
-            f"#EXTVLCOPT:http-user-agent={ua}"
-        ]
-        if ref:
-            vlc_opts.append(f"#EXTVLCOPT:http-referrer={ref}")
-
-        vlc_opts_str = "\n".join(vlc_opts)
-        ref_attr = f' http-referrer="{ref}"' if ref else ''
-
-        entry = (
-            f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}" '
-            f'http-user-agent="{ua}" user-agent="{ua}"{ref_attr},{channel_name}\n'
-            f'{vlc_opts_str}\n'
-            f'{final_url}'
-        )
-        grouped_channels[group_title].append(entry)
-        total_count += 1
+            entry = (
+                f'#EXTINF:-1 tvg-logo="{logo}" group-title="{group_title}" '
+                f'http-user-agent="{ua}" user-agent="{ua}",{channel_name}\n'
+                f'{vlc_opts_str}\n'
+                f'{final_url}'
+            )
+            grouped_channels[group_title].append(entry)
+            seen_urls.add(final_url)
+            total_count += 1
 
     m3u_lines = ["#EXTM3U"]
     for group in PREFERRED_ORDER_KZ:
